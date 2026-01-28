@@ -2,10 +2,6 @@
 
 Use `nap-msg` to send QQ messages via Napcat for moltbot.
 
-Install/run
-- `poetry install`
-- `poetry run nap-msg ...`
-
 Commands
 - Private: `nap-msg send <user_id> [segments...]`
 - Group: `nap-msg send-group <group_id> [segments...]`
@@ -25,3 +21,4 @@ Options
 
 Notes
 - Segment flags can be mixed/repeated; the order you type is the order sent.
+- Daemon allowlist: set `ALLOW_SENDERS` (space/comma-separated QQ user_id list) to restrict who can trigger relay.

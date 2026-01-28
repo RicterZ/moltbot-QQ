@@ -8,7 +8,8 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "websockets>=13.1,<14.0"
+    "websockets>=12",
+    "moltbot @ https://github.com/RicterZ/moltbot-python/archive/refs/tags/v0.0.1.zip"
 ]
 
 
@@ -18,6 +19,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project.scripts]
 nap-msg = "nap_msg.cli:main"
+nap-msg-daemon = "nap_msg.daemon:main"
 
 [tool.poetry]
 packages = [{include = "nap_msg", from = "src"}]
