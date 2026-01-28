@@ -12,10 +12,11 @@ Napcat backend: set env `NAPCAT_URL` (or pass `--napcat-url`).
 ## Daemon (QQ -> moltbot)
 `poetry run nap-msg-daemon`
 
-Env config:
+Env/flags:
 - `NAPCAT_URL` (required): Napcat websocket for commands.
 - `MOLTBOT_URL` (default `ws://127.0.0.1:18789`)
 - `MOLTBOT_TOKEN` / `MOLTBOT_PASSWORD` (gateway auth)
 - `MOLTBOT_WAIT_TIMEOUT` (default `60`)
 - `ALLOW_SENDERS` (optional): space/comma-separated QQ user_ids allowed to trigger relay (others ignored)
-- `--fire-and-forget`: CLI flag to relay to moltbot but skip sending replies back to QQ
+- `--fire-and-forget`: relay to moltbot but skip sending replies back to QQ
+- `--ignore-startswith <prefix>`: repeatable flag to skip relaying messages that start with given prefix(es)

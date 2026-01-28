@@ -45,6 +45,7 @@ async def handle_message_event(
     moltbot_cfg: MoltbotConfig,
     allow_senders: set[str],
     fire_and_forget: bool,
+    ignore_prefixes: list[str],
 ) -> None:
     message_type = event.get("message_type")
     if message_type not in {"group", "private"}:
@@ -59,6 +60,10 @@ async def handle_message_event(
     if not text:
         logger.debug("No text content in event, skip")
         return
+    for prefix in ignore_prefixes:
+        if text.startswith(prefix):
+            logger.info("Ignore message due to prefix %r", prefix)
+            return
 
     session_key = _build_session_key(event)
     try:
@@ -131,10 +136,13 @@ async def watch_napcat_events(
     napcat_client: NapcatRelayClient,
     moltbot_cfg: MoltbotConfig,
     fire_and_forget: bool,
+    ignore_prefixes: list[str],
 ) -> None:
     allow_senders = _load_allow_senders()
     if allow_senders:
         logger.info("Allow list enabled: %s", ", ".join(sorted(allow_senders)))
+    if ignore_prefixes:
+        logger.info("Ignore prefixes: %s", ", ".join(ignore_prefixes))
 
     while True:
         try:
@@ -158,7 +166,14 @@ async def watch_napcat_events(
                             event.get("user_id"),
                             preview[:200],
                         )
-                        await handle_message_event(event, napcat_client, moltbot_cfg, allow_senders, fire_and_forget)
+                        await handle_message_event(
+                            event,
+                            napcat_client,
+                            moltbot_cfg,
+                            allow_senders,
+                            fire_and_forget,
+                            ignore_prefixes,
+                        )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -169,6 +184,12 @@ async def watch_napcat_events(
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Napcat -> moltbot relay daemon")
     parser.add_argument("--fire-and-forget", action="store_true", help="Send to moltbot but do not send replies back to QQ")
+    parser.add_argument(
+        "--ignore-startswith",
+        action="append",
+        default=[],
+        help="If provided, skip relaying messages that start with any of these prefixes.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -182,7 +203,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     moltbot_cfg = load_moltbot_config()
 
     try:
-        asyncio.run(watch_napcat_events(napcat_url, napcat_client, moltbot_cfg, args.fire_and_forget))
+        asyncio.run(
+            watch_napcat_events(
+                napcat_url,
+                napcat_client,
+                moltbot_cfg,
+                args.fire_and_forget,
+                args.ignore_startswith or [],
+            )
+        )
     except KeyboardInterrupt:
         logger.info("Shutting down daemon")
     return 0
