@@ -66,10 +66,6 @@ async def handle_message_event(
         if check_text.startswith(prefix):
             logger.info("Ignore message due to prefix %r text=%r", prefix, check_text[:200])
             return
-        # Also check raw text (without stripping leading spaces) to be safe
-        if first_line.startswith(prefix):
-            logger.info("Ignore message due to prefix %r raw=%r", prefix, first_line[:200])
-            return
 
     session_key = _build_session_key(event)
     try:
