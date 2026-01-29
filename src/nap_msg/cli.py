@@ -108,16 +108,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Shortcut for --type forward.",
     )
 
-    watch = subparsers.add_parser("watch", help="Watch QQ incoming messages and print JSON")
-    watch.add_argument("--from-group", dest="from_group", help="Only include messages from this group id")
-    watch.add_argument("--from-user", dest="from_user", help="Only include messages from this user id")
-    watch.add_argument(
-        "--ignore-startswith",
-        action="append",
-        default=[],
-        help="Skip messages whose text starts with any of these prefixes.",
-    )
-
     subparsers.add_parser("rpc", help="Run JSON-RPC server on stdin/stdout")
 
     return parser
@@ -213,8 +203,6 @@ def main(argv: list[str] | None = None) -> int:
         return _run_send_private(args)
     if args.command == "send-group":
         return _run_send_group(args)
-    if args.command == "watch":
-        return run_watch(args)
     if args.command == "rpc":
         return run_rpc_server()
 
