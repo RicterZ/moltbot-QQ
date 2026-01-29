@@ -80,6 +80,11 @@ async def handle_message_event(
         return
 
     reply_text = _extract_reply_text(response)
+    logger.info(
+        "Moltbot response: text_present=%s stitched=%s",
+        bool(reply_text),
+        bool(response.get("events")) if isinstance(response, dict) else False,
+    )
     if fire_and_forget:
         return
     if not reply_text:
