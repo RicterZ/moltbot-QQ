@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 class RpcServer:
     def __init__(self) -> None:
-        self._watch_task: Optional[asyncio.Task] = None
+        self._watch_tasks: dict[int, asyncio.Task] = {}
+        self._next_subscription_id = 1
 
     async def serve(self) -> None:
         """Run a JSON-RPC loop over stdin/stdout (one JSON object per line)."""
-        loop = asyncio.get_running_loop()
         while True:
             line = await asyncio.to_thread(sys.stdin.readline)
             if not line:
@@ -39,6 +39,7 @@ class RpcServer:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Unhandled RPC error: %s", exc)
                 self._write_error(request.get("id"), code=-32000, message=str(exc))
+        await self._stop_watch()
 
     async def _handle_request(self, request: dict) -> None:
         method = request.get("method")
@@ -52,13 +53,16 @@ class RpcServer:
             await self._handle_subscribe(params, req_id)
             return
         if method == "watch.unsubscribe":
-            await self._handle_unsubscribe(req_id)
+            await self._handle_unsubscribe(params, req_id)
             return
         if method == "message.send":
             await self._handle_message_send(params, req_id)
             return
         if method == "send":
             await self._handle_send(params, req_id)
+            return
+        if method == "messages.history":
+            self._write_result(req_id, {"messages": []})
             return
         if method == "chats.list":
             self._write_result(req_id, [])
@@ -93,7 +97,6 @@ class RpcServer:
         )
 
     async def _handle_subscribe(self, params: dict, req_id: Any) -> None:
-        await self._stop_watch()
         url = params.get("napcat_url") or os.getenv("NAPCAT_URL")
         if not url:
             self._write_error(req_id, code=-32000, message="NAPCAT_URL is required")
@@ -104,21 +107,36 @@ class RpcServer:
         ignore_prefixes = params.get("ignore_prefixes") or DEFAULT_IGNORE_PREFIXES
         asr_enabled = _asr_enabled()
 
-        self._watch_task = asyncio.create_task(
+        sub_id = self._next_subscription_id
+        self._next_subscription_id += 1
+
+        async def _emit(event: dict) -> None:
+            payload = {"subscription": sub_id, "message": _event_to_receive_params(event)}
+            self._write_json({"jsonrpc": "2.0", "method": "message", "params": payload})
+
+        task = asyncio.create_task(
             watch_forever(
                 url=url,
                 from_group=from_group,
                 from_user=from_user,
                 ignore_prefixes=ignore_prefixes,
                 asr_enabled=asr_enabled,
-                emit=self._emit_notification,
+                emit=_emit,
             )
         )
-        self._write_result(req_id, {"status": "subscribed"})
+        self._watch_tasks[sub_id] = task
+        self._write_result(req_id, {"subscription": sub_id})
 
-    async def _handle_unsubscribe(self, req_id: Any) -> None:
-        await self._stop_watch()
-        self._write_result(req_id, {"status": "unsubscribed"})
+    async def _handle_unsubscribe(self, params: dict, req_id: Any) -> None:
+        sub_id = params.get("subscription")
+        if not isinstance(sub_id, int):
+            try:
+                sub_id = int(sub_id)
+            except Exception:
+                self._write_error(req_id, code=-32602, message="subscription is required")
+                return
+        await self._cancel_subscription(sub_id)
+        self._write_result(req_id, {"ok": True})
 
     async def _handle_send(self, params: dict, req_id: Any) -> None:
         channel = params.get("channel") or params.get("type")
@@ -161,19 +179,27 @@ class RpcServer:
         self._write_result(req_id, result)
 
     async def _stop_watch(self) -> None:
-        if self._watch_task is None:
+        if not self._watch_tasks:
             return
-        task = self._watch_task
-        self._watch_task = None
+        tasks = list(self._watch_tasks.values())
+        self._watch_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                continue
+
+    async def _cancel_subscription(self, sub_id: int) -> None:
+        task = self._watch_tasks.pop(sub_id, None)
+        if not task:
+            return
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-
-    def _emit_notification(self, event: dict) -> None:
-        payload = {"jsonrpc": "2.0", "method": "message.receive", "params": _event_to_receive_params(event)}
-        self._write_json(payload)
 
     def _write_result(self, req_id: Any, result: Any) -> None:
         if req_id is None:

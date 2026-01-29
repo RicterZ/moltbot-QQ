@@ -1,0 +1,9 @@
+{
+  "name": "@clawdbot/napcat",
+  "version": "2026.2.01",
+  "type": "module",
+  "description": "Clawdbot Napcat channel plugin (stdin/stdout RPC bridge)",
+  "clawdbot": {
+    "extensions": ["./index.ts"]
+  }
+}
