@@ -20,7 +20,6 @@ build-backend = "poetry.core.masonry.api"
 
 [project.scripts]
 nap-msg = "nap_msg.cli:main"
-nap-msg-daemon = "nap_msg.daemon:main"
 
 [tool.poetry]
 packages = [{include = "nap_msg", from = "src"}]

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import sys
+import uuid
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 import websockets
@@ -18,8 +21,8 @@ KEEP_FIELDS = {
     "message_type",
     "message_id",
     "raw_message",
-    "time",
-    "target_id",
+    # "time",
+    # "target_id",
 }
 
 DEFAULT_IGNORE_PREFIXES = ["/"]
@@ -148,13 +151,73 @@ async def _resolve_text(clean_text: Optional[str], record_file: Optional[str]) -
 
 
 async def _fetch_voice(path: str) -> bytes:
-    url = _build_napcat_file_url(path)
-    if not url:
+    napcat_ws = os.getenv("NAPCAT_URL", "").strip()
+    if not napcat_ws:
         return b""
+    parsed = urlparse(napcat_ws)
+    if parsed.scheme not in ("ws", "wss"):
+        return b""
+    scheme = "http" if parsed.scheme == "ws" else "https"
+    hostname = parsed.hostname or "localhost"
+    port = parsed.port or (80 if scheme == "http" else 443)
+    base_url = f"{scheme}://{hostname}:{port}"
+
+    payload = {"file": path, "out_format": "mp3"}
+    echo = str(uuid.uuid4())
+    request_body = {"action": "get_record", "params": payload, "echo": echo}
+
+    try:
+        async with websockets.connect(napcat_ws, max_size=None) as ws:
+            await ws.send(json.dumps(request_body))
+            response = None
+            for _ in range(5):
+                try:
+                    response_raw = await asyncio.wait_for(ws.recv(), timeout=10)
+                except Exception:
+                    break
+                try:
+                    candidate = json.loads(response_raw)
+                except Exception:
+                    continue
+                if not isinstance(candidate, dict):
+                    continue
+                if candidate.get("post_type") == "meta_event":
+                    continue
+                if candidate.get("echo") and candidate.get("echo") != echo:
+                    continue
+                if not candidate.get("status"):
+                    continue
+                response = candidate
+                break
+    except Exception:
+        return b""
+
+    if response is None:
+        return b""
+
+    data = response.get("data") or {}
+    record_base64 = data.get("base64") if isinstance(data, dict) else None
+    record_url = data.get("url") if isinstance(data, dict) else None
+    record_file = data.get("file") if isinstance(data, dict) else None
+
+    if record_base64:
+        try:
+            return base64.b64decode(record_base64)
+        except Exception:
+            return b""
+
+    target = record_url or record_file
+    if not target:
+        return b""
+
+    download_url = target if target.startswith(("http://", "https://")) else f"{base_url}/{target.lstrip('/')}"
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.content
+        try:
+            file_resp = await client.get(download_url)
+            file_resp.raise_for_status()
+            return file_resp.content
+        except Exception:
+            return b""
 
 
 def _read_file_bytes(path: str) -> bytes:
