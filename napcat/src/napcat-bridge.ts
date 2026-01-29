@@ -24,6 +24,7 @@ export class NapcatRpcClient {
   private pending = new Map<number | string, (resp: RpcResponse) => void>();
   private listeners: Array<(message: any) => void> = [];
   private starting = false;
+  private subscriptionId: number | null = null;
 
   async connect(cliPath = "nap-msg", args: string[] = ["rpc"]): Promise<boolean> {
     if (this.proc || this.starting) return true;
@@ -39,12 +40,13 @@ export class NapcatRpcClient {
         });
 
         this.initialize()
+          .then(() => this.watchSubscribe())
           .then(() => {
             this.starting = false;
             resolve(true);
           })
           .catch((err) => {
-            console.error("Failed to init nap-msg rpc:", err);
+            console.error("Failed to init/subscribe nap-msg rpc:", err);
             this.starting = false;
             resolve(false);
           });
@@ -60,6 +62,14 @@ export class NapcatRpcClient {
     await new Promise((resolve) => setTimeout(resolve, 200));
     const result = await this.send("initialize", {});
     console.log("Napcat RPC initialized:", result);
+  }
+
+  private async watchSubscribe(): Promise<void> {
+    const res = await this.send("watch.subscribe", {});
+    if (res && res.subscription) {
+      this.subscriptionId = res.subscription;
+      console.log(`Napcat RPC subscribed (subscription=${res.subscription})`);
+    }
   }
 
   private handleLine(line: string) {
@@ -116,6 +126,7 @@ export class NapcatRpcClient {
     }
     this.pending.clear();
     this.listeners = [];
+    this.subscriptionId = null;
     this.starting = false;
   }
 }

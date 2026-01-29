@@ -180,18 +180,22 @@ export const napcatPlugin: ChannelPlugin<any> = {
       const unsubscribe = connectionManager.subscribe((message) => {
         const mapped = napcatPlugin.inbound.mapIncomingMessage?.(message);
         if (!mapped) return;
-        const dispatcher = (ctx as any).dispatchInboundMessage;
-        if (typeof dispatcher === "function") {
-          dispatcher(mapped);
-        } else if (!missingHandlerLogged) {
-          missingHandlerLogged = true;
-          ctx.log?.error?.("napcat inbound dispatcher missing on gateway context");
+        try {
+          const dispatcher = (ctx as any).dispatchInboundMessage;
+          if (typeof dispatcher === "function") {
+            dispatcher(mapped);
+          } else if (!missingHandlerLogged) {
+            missingHandlerLogged = true;
+            ctx.log?.error?.("napcat inbound dispatcher missing on gateway context");
+          }
+        } catch (err) {
+          ctx.log?.error?.(`napcat inbound dispatch failed: ${(err as Error).message}`);
         }
       });
-      
+
       // Ensure the connection is established
       await connectionManager.ensureConnected();
-      
+
       return () => {
         ctx.log?.info(`[${ctx.account.accountId}] napcat plugin stopping`);
         unsubscribe(); // Unsubscribe from messages
