@@ -10,6 +10,7 @@ Commands
 - Private: `nap-msg send <user_id> [segments...]`
 - Group: `nap-msg send-group <group_id> [segments...]`
 - Forward (group multimodal): `nap-msg send-group <group_id> --forward [segments...]`
+- Watch incoming QQ messages as JSON: `nap-msg watch [--from-group <gid>] [--from-user <uid>]`
 
 Segments (order = send order)
 - `-t/--text "<text>"`

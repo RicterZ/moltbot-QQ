@@ -6,10 +6,11 @@ import json
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from .client import DEFAULT_TIMEOUT, NapcatRelayClient, send_group_forward_message, send_group_message, send_private_message
 from .messages import FileMessage, ForwardNode, ImageMessage, ReplyMessage, TextMessage, VideoMessage
+import websockets
 
 
 def _segment_action(segment_type: str):
@@ -87,6 +88,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Shortcut for --type forward.",
     )
+
+    watch = subparsers.add_parser("watch", help="Watch QQ incoming messages and print JSON")
+    watch.add_argument("--from-group", dest="from_group", help="Only include messages from this group id")
+    watch.add_argument("--from-user", dest="from_user", help="Only include messages from this user id")
 
     return parser
 
@@ -166,6 +171,48 @@ def _run_send_private(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[str]) -> None:
+    while True:
+        try:
+            logging.info("Connecting to Napcat event stream %s", url)
+            async with websockets.connect(url, max_size=None) as ws:
+                async for raw in ws:
+                    logging.debug("WS raw frame: %s", raw)
+                    try:
+                        event = json.loads(raw)
+                    except json.JSONDecodeError:
+                        logging.warning("Discard non-JSON frame")
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+                    if event.get("post_type") != "message":
+                        continue
+                    if from_group and str(event.get("group_id")) != str(from_group):
+                        continue
+                    if from_user and str(event.get("user_id")) != str(from_user):
+                        continue
+                    sys.stdout.write(json.dumps(event, ensure_ascii=False, indent=2))
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("Watch loop error %s, reconnecting in 3s", exc)
+            await asyncio.sleep(3)
+
+
+def _run_watch(args: argparse.Namespace) -> int:
+    url = os.getenv("NAPCAT_URL")
+    if not url:
+        sys.stderr.write("NAPCAT_URL is required for watch\n")
+        return 2
+    try:
+        asyncio.run(_watch_loop(url, args.from_group, args.from_user))
+    except KeyboardInterrupt:
+        logging.info("watch stopped by user")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -175,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_send_private(args)
     if args.command == "send-group":
         return _run_send_group(args)
+    if args.command == "watch":
+        return _run_watch(args)
 
     parser.error(f"Unknown command {args.command}")
     return 2
