@@ -85,6 +85,7 @@ async def handle_message_event(
         logger.exception("Failed to send to moltbot: %s", exc)
         return
 
+    logger.debug("Moltbot raw response: %r", response)
     reply_text = _extract_reply_text(response)
     logger.info(
         "Moltbot response: text_present=%s stitched=%s",
