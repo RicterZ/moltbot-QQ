@@ -209,7 +209,7 @@ async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[s
                     resolved = await _resolve_text(text_content, record_file)
                     if resolved:
                         event["resolved_text"] = resolved
-                    sys.stdout.write(json.dumps(event, ensure_ascii=False, indent=2))
+                    sys.stdout.write(json.dumps(event, ensure_ascii=False))
                     sys.stdout.write("\n")
                     sys.stdout.flush()
         except asyncio.CancelledError:
@@ -224,10 +224,14 @@ def _run_watch(args: argparse.Namespace) -> int:
     if not url:
         sys.stderr.write("NAPCAT_URL is required for watch\n")
         return 2
+    # Silence logging for clean JSON output unless verbose was explicitly requested
+    if not args.verbose:
+        logging.getLogger().setLevel(logging.ERROR)
     try:
         asyncio.run(_watch_loop(url, args.from_group, args.from_user, args.ignore_startswith or []))
     except KeyboardInterrupt:
-        logging.info("watch stopped by user")
+        if args.verbose:
+            logging.info("watch stopped by user")
     return 0
 
 
