@@ -148,10 +148,13 @@ async def _resolve_text(clean_text: Optional[str], record_file: Optional[str]) -
 
 
 async def _fetch_voice(path: str) -> bytes:
+    url = path
     if not (path.startswith("http://") or path.startswith("https://")):
-        return b""
+        url = _build_napcat_file_url(path)
+        if not url:
+            return b""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(path)
+        resp = await client.get(url)
         resp.raise_for_status()
         return resp.content
 
@@ -167,3 +170,17 @@ def _strip_cq_and_whitespace(text: str) -> str:
     text = re.sub(r"\[CQ:(face|image)[^\]]*\]", "", text, flags=re.IGNORECASE)
     text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
     return text.strip()
+
+
+def _build_napcat_file_url(path: str) -> Optional[str]:
+    """
+    Convert a local QQ voice path to the Napcat file URL.
+    Example: /app/.config/QQ/nt_qq_.../nt_data/Ptt/2026-01/Ori/xxx.amr
+    becomes http://192.168.13.100/napcat/nt_qq_.../nt_data/Ptt/2026-01/Ori/xxx.amr
+    """
+    marker = "/nt_qq_"
+    idx = path.find(marker)
+    if idx == -1:
+        return None
+    rel = path[idx + 1 :] if path.startswith("/") else path[idx:]
+    return f"http://192.168.13.100/napcat/{rel}"
