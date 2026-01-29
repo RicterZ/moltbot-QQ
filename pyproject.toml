@@ -9,7 +9,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "websockets>=12",
-    "moltbot @ https://github.com/RicterZ/moltbot-python/archive/refs/tags/v0.0.1.zip"
+    "moltbot @ https://github.com/RicterZ/moltbot-python/archive/refs/tags/v0.0.1.zip",
+    "httpx (>=0.28.1,<0.29.0)"
 ]
 
 

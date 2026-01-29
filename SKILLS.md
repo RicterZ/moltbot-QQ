@@ -33,5 +33,8 @@ Segment flags can be mixed/repeated; the order you type is the order sent.
 
 - Watch incoming QQ messages as JSON: `nap-msg watch --from-user $ALLOW_SENDERS [--ignore-startswith <pfx>]`
 
+#### Message format
+TODO ...
+
 #### Notes
 - Ignore messages startswith `/` by default
