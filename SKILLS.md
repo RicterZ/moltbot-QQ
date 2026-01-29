@@ -4,7 +4,7 @@ Use `nap-msg` to send / receive QQ messages for moltbot.
 Read necessary environment variables from `.env` file.
 
 - `NAPCAT_URL`
-- `ALLOW_SENDERS`
+- `ALLOW_SENDERS` (optional for send)
 
 ## Send Messages
 #### Commands
@@ -31,10 +31,9 @@ Segment flags can be mixed/repeated; the order you type is the order sent.
 ## Receive Messages
 #### Commands
 
-- Watch incoming QQ messages as JSON: `nap-msg watch --from-user $ALLOW_SENDERS [--ignore-startswith <pfx>]`
+- Watch incoming QQ messages as JSON: `nap-msg watch [--from-group <gid>] [--from-user <uid>] [--ignore-startswith <pfx>]`
 
-#### Message format
-TODO ...
-
-#### Notes
-- Ignore messages startswith `/` by default
+#### Output
+- Default: one-line JSON per message, only key fields kept (`user_id`, `group_id`, `message_type`, `message_id`, `raw_message`, `message`, `resolved_text`, `post_type`, `time`, `target_id`).
+- `resolved_text` includes ASR transcription when Tencent creds are set (`TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY`); otherwise voice messages are ignored.
+- Logs are suppressed by default to avoid interfering with consumers; add `--verbose` to debug.

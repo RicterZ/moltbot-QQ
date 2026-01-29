@@ -180,16 +180,16 @@ def _run_send_private(args: argparse.Namespace) -> int:
 
 
 KEEP_FIELDS = {
-    "self_id",
     "user_id",
     "group_id",
-    "group_name",
     "message_type",
     "message_id",
     "raw_message",
     "message",
     "resolved_text",
     "post_type",
+    "time",
+    "target_id",
 }
 
 
