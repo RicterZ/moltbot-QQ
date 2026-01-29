@@ -3,8 +3,8 @@
 Use `nap-msg` to send QQ messages via Napcat for moltbot.
 Read necessary environment variables from `.env` file.
 
-- NAPCAT_URL
-- ALLOW_SENDERS
+- `NAPCAT_URL`
+- `ALLOW_SENDERS`
 
 Commands
 - Private: `nap-msg send <user_id> [segments...]`
