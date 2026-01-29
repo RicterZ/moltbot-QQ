@@ -1,10 +1,10 @@
-import { emptyPluginConfigSchema, getChatChannelMeta, type ChannelPlugin } from "clawdbot/plugin-sdk";
+import { emptyPluginConfigSchema, getChatChannelMeta, type ChannelPlugin, type IncomingMessage } from "clawdbot/plugin-sdk";
 import { getNapcatRuntime } from "./runtime.js";
+import { connectionManager } from "./connection-manager.js";
 
 const meta = getChatChannelMeta("napcat");
 
-// Minimal stub plugin to register Napcat channel. It advertises capabilities but delegates
-// actual provider wiring to the runtime (not implemented here).
+// Napcat channel plugin implementation
 export const napcatPlugin: ChannelPlugin<any> = {
   id: "napcat",
   meta: { ...meta, aliases: ["nap"] },
@@ -66,7 +66,28 @@ export const napcatPlugin: ChannelPlugin<any> = {
   },
   inbound: {
     schemaVersion: 1,
-    mapIncomingMessage: () => null,
+    mapIncomingMessage: (raw: any): IncomingMessage | null => {
+      // Handle incoming messages from nap-msg RPC
+      // The raw object here comes from the RPC notification when a message is received
+      if (raw && typeof raw === 'object') {
+        return {
+          id: raw.messageId?.toString() || Date.now().toString(),
+          from: {
+            id: raw.sender?.id?.toString() || "unknown",
+            name: raw.sender?.name || raw.sender?.id?.toString() || "Unknown",
+            channelUserId: raw.sender?.id?.toString()
+          },
+          to: [{
+            id: raw.chatId?.toString() || "unknown",
+            type: raw.isGroup ? "group" : "direct"
+          }],
+          text: raw.text,
+          receivedAt: new Date().toISOString(),
+          original: raw
+        };
+      }
+      return null;
+    },
   },
   outbound: {
     deliveryMode: "direct",
@@ -74,12 +95,33 @@ export const napcatPlugin: ChannelPlugin<any> = {
     chunkerMode: "text",
     textChunkLimit: 4000,
     sendText: async ({ to, text }) => {
-      // Placeholder: real implementation should bridge to nap-msg RPC.
-      return { channel: "napcat", to, text } as any;
+      // Use the connection manager to send via nap-msg RPC
+      try {
+        const result = await connectionManager.send('message.send', {
+          to: to.toString(),
+          text: text,
+          isGroup: to.toString().includes('group') // Simplified logic
+        });
+        return { channel: "napcat", to, text, result };
+      } catch (error) {
+        console.error('Error sending message:', error);
+        throw error;
+      }
     },
     sendMedia: async ({ to, mediaUrl, text }) => {
-      // Placeholder: real implementation should bridge to nap-msg RPC.
-      return { channel: "napcat", to, mediaUrl, text } as any;
+      // Use the connection manager to send media via nap-msg RPC
+      try {
+        const result = await connectionManager.send('message.send', {
+          to: to.toString(),
+          text: text,
+          mediaUrl: mediaUrl,
+          isGroup: to.toString().includes('group') // Simplified logic
+        });
+        return { channel: "napcat", to, mediaUrl, text, result };
+      } catch (error) {
+        console.error('Error sending media:', error);
+        throw error;
+      }
     },
   },
   status: {
@@ -104,7 +146,14 @@ export const napcatPlugin: ChannelPlugin<any> = {
       probe: snapshot.probe,
       lastProbeAt: snapshot.lastProbeAt ?? null,
     }),
-    probeAccount: async () => ({ ok: true }),
+    probeAccount: async () => {
+      try {
+        const connected = await connectionManager.ensureConnected();
+        return { ok: connected };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
     buildAccountSnapshot: ({ account, runtime }) => ({
       accountId: account.accountId,
       name: account.name ?? account.accountId,
@@ -124,10 +173,19 @@ export const napcatPlugin: ChannelPlugin<any> = {
   },
   gateway: {
     startAccount: async (ctx) => {
-      ctx.log?.info(`[${ctx.account.accountId}] napcat plugin stub started`);
-      // No-op; wire actual provider process here as needed.
+      ctx.log?.info(`[${ctx.account.accountId}] napcat plugin starting`);
+      
+      // Subscribe to incoming messages using the connection manager
+      const unsubscribe = connectionManager.subscribe((message) => {
+        ctx.handleInboundMessage(message);
+      });
+      
+      // Ensure the connection is established
+      await connectionManager.ensureConnected();
+      
       return () => {
-        getNapcatRuntime();
+        ctx.log?.info(`[${ctx.account.accountId}] napcat plugin stopping`);
+        unsubscribe(); // Unsubscribe from messages
       };
     },
   },
