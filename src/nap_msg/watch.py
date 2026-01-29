@@ -10,7 +10,6 @@ import uuid
 from typing import Optional
 from urllib.parse import urlparse
 
-import httpx
 import websockets
 
 from .asr import sentence_recognize
@@ -157,10 +156,6 @@ async def _fetch_voice(path: str) -> bytes:
     parsed = urlparse(napcat_ws)
     if parsed.scheme not in ("ws", "wss"):
         return b""
-    scheme = "http" if parsed.scheme == "ws" else "https"
-    hostname = parsed.hostname or "localhost"
-    port = parsed.port or (80 if scheme == "http" else 443)
-    base_url = f"{scheme}://{hostname}:{port}"
 
     payload = {"file": path, "out_format": "mp3"}
     echo = str(uuid.uuid4())
@@ -189,6 +184,7 @@ async def _fetch_voice(path: str) -> bytes:
                     continue
                 response = candidate
                 break
+
     except Exception:
         return b""
 
@@ -197,8 +193,6 @@ async def _fetch_voice(path: str) -> bytes:
 
     data = response.get("data") or {}
     record_base64 = data.get("base64") if isinstance(data, dict) else None
-    record_url = data.get("url") if isinstance(data, dict) else None
-    record_file = data.get("file") if isinstance(data, dict) else None
 
     if record_base64:
         try:
@@ -206,18 +200,8 @@ async def _fetch_voice(path: str) -> bytes:
         except Exception:
             return b""
 
-    target = record_url or record_file
-    if not target:
-        return b""
-
-    download_url = target if target.startswith(("http://", "https://")) else f"{base_url}/{target.lstrip('/')}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            file_resp = await client.get(download_url)
-            file_resp.raise_for_status()
-            return file_resp.content
-        except Exception:
-            return b""
+    # No base64; do not attempt HTTP download per requirements
+    return b""
 
 
 def _read_file_bytes(path: str) -> bytes:

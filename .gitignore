@@ -10,3 +10,6 @@ __pycache__/
 
 # Poetry
 poetry.lock
+
+# Env files
+.env
