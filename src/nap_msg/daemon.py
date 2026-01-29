@@ -104,7 +104,23 @@ def _extract_reply_text(response: Dict[str, Any]) -> Optional[str]:
         return None
     final = response.get("final_text") or response.get("text")
     if isinstance(final, str) and final.strip():
-        return final.strip()
+        return _strip_tool_marker(final.strip())
+
+    # From message.content list
+    message = response.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                txt = item.get("text")
+                if isinstance(txt, str):
+                    parts.append(txt)
+            stitched_msg = "".join(parts).strip()
+            if stitched_msg:
+                return _strip_tool_marker(stitched_msg)
 
     # Fallback: stitch assistant stream texts from events
     events = response.get("events")
@@ -120,8 +136,16 @@ def _extract_reply_text(response: Dict[str, Any]) -> Optional[str]:
             if isinstance(txt, str):
                 parts.append(txt)
         stitched = "".join(parts).strip()
-        return stitched or None
+        return _strip_tool_marker(stitched) or None
     return None
+
+
+def _strip_tool_marker(text: str) -> str:
+    """Remove trailing tool-call markers like [[reply_to_current ..."""
+    marker_pos = text.find("[[")
+    if marker_pos != -1:
+        return text[:marker_pos].rstrip()
+    return text
 
 
 def _extract_text(event: Dict[str, Any]) -> Optional[str]:
