@@ -192,6 +192,8 @@ KEEP_FIELDS = {
     "target_id",
 }
 
+DEFAULT_IGNORE_PREFIXES = ["/", "[CQ:"]
+
 
 async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[str], ignore_prefixes: list[str]) -> None:
     while True:
@@ -214,11 +216,15 @@ async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[s
                     if from_user and str(event.get("user_id")) != str(from_user):
                         continue
                     text_content, record_file = _extract_text_and_record(event)
+                    if text_content:
+                        cleaned = _strip_cq_and_whitespace(text_content)
+                        if not cleaned:
+                            continue
+                        text_content = cleaned
                     if ignore_prefixes and text_content:
                         first_line = next((ln for ln in text_content.splitlines() if ln.strip()), text_content)
                         check_text = first_line.lstrip()
                         if any(check_text.startswith(pfx) for pfx in ignore_prefixes):
-                            logging.info("Ignored message due to prefix match")
                             continue
                     resolved = await _resolve_text(text_content, record_file)
                     if resolved:
@@ -239,11 +245,14 @@ def _run_watch(args: argparse.Namespace) -> int:
     if not url:
         sys.stderr.write("NAPCAT_URL is required for watch\n")
         return 2
+    ignore_prefixes = args.ignore_startswith or []
+    if not ignore_prefixes:
+        ignore_prefixes = DEFAULT_IGNORE_PREFIXES
     # Silence logging for clean JSON output unless verbose was explicitly requested
     if not args.verbose:
         logging.getLogger().setLevel(logging.ERROR)
     try:
-        asyncio.run(_watch_loop(url, args.from_group, args.from_user, args.ignore_startswith or []))
+        asyncio.run(_watch_loop(url, args.from_group, args.from_user, ignore_prefixes))
     except KeyboardInterrupt:
         if args.verbose:
             logging.info("watch stopped by user")
@@ -314,6 +323,16 @@ async def _fetch_voice(path: str) -> bytes:
 def _read_file_bytes(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read()
+
+
+def _strip_cq_and_whitespace(text: str) -> str:
+    import re
+
+    # Remove CQ codes like [CQ:face,id=67] or [CQ:image,...]
+    text = re.sub(r"\[CQ:[^\]]+\]", "", text)
+    # Normalize whitespace
+    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    return text.strip()
 
 
 def main(argv: list[str] | None = None) -> int:
