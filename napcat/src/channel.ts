@@ -174,10 +174,18 @@ export const napcatPlugin: ChannelPlugin<any> = {
   gateway: {
     startAccount: async (ctx) => {
       ctx.log?.info(`[${ctx.account.accountId}] napcat plugin starting`);
-      
+
       // Subscribe to incoming messages using the connection manager
+      let missingHandlerLogged = false;
       const unsubscribe = connectionManager.subscribe((message) => {
-        ctx.handleInboundMessage(message);
+        const mapped = napcatPlugin.inbound.mapIncomingMessage?.(message);
+        if (!mapped) return;
+        if (typeof (ctx as any).handleInboundMessage === "function") {
+          (ctx as any).handleInboundMessage(mapped);
+        } else if (!missingHandlerLogged) {
+          missingHandlerLogged = true;
+          ctx.log?.error?.("napcat inbound handler missing on gateway context");
+        }
       });
       
       // Ensure the connection is established
