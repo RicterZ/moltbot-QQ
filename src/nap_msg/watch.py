@@ -7,6 +7,7 @@ import os
 import sys
 from typing import Optional
 
+import httpx
 import websockets
 
 from .asr import sentence_recognize
@@ -147,14 +148,13 @@ async def _resolve_text(clean_text: Optional[str], record_file: Optional[str]) -
 
 
 async def _fetch_voice(path: str) -> bytes:
-    local_path = _build_napcat_local_path(path)
-    if not local_path:
+    url = _build_napcat_file_url(path)
+    if not url:
         return b""
-    loop = asyncio.get_running_loop()
-    try:
-        return await loop.run_in_executor(None, _read_file_bytes, local_path)
-    except FileNotFoundError:
-        return b""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.content
 
 
 def _read_file_bytes(path: str) -> bytes:
@@ -176,13 +176,5 @@ def _build_napcat_file_url(path: str) -> Optional[str]:
     if idx == -1:
         return None
     rel = path[idx:] if path.startswith(marker) else path[idx:]
-    return f"http://192.168.13.100/napcat/{rel}"
-
-
-def _build_napcat_local_path(path: str) -> Optional[str]:
-    marker = "/nt_qq_"
-    idx = path.find(marker)
-    if idx == -1:
-        return None
-    rel = path[idx:]
-    return f"/napcat{rel}"
+    base = os.getenv("NAPCAT_FILE_BASE", "http://192.168.13.100/napcat")
+    return f"{base.rstrip('/')}/{rel.lstrip('/')}"
