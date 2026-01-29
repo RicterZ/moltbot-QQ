@@ -192,7 +192,7 @@ KEEP_FIELDS = {
     "target_id",
 }
 
-DEFAULT_IGNORE_PREFIXES = ["/", "[CQ:"]
+DEFAULT_IGNORE_PREFIXES = ["/"]
 
 
 async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[str], ignore_prefixes: list[str]) -> None:
@@ -221,11 +221,15 @@ async def _watch_loop(url: str, from_group: Optional[str], from_user: Optional[s
                         if not cleaned:
                             continue
                         text_content = cleaned
-                    if ignore_prefixes and text_content:
-                        first_line = next((ln for ln in text_content.splitlines() if ln.strip()), text_content)
-                        check_text = first_line.lstrip()
-                        if any(check_text.startswith(pfx) for pfx in ignore_prefixes):
-                            continue
+                        if ignore_prefixes:
+                            first_line = next((ln for ln in text_content.splitlines() if ln.strip()), text_content)
+                            check_text = first_line.lstrip()
+                            if any(check_text.startswith(pfx) for pfx in ignore_prefixes):
+                                continue
+                    elif not record_file:
+                        # No text and no voice/file: ignore (e.g., pure emoji/image)
+                        continue
+
                     resolved = await _resolve_text(text_content, record_file)
                     if resolved:
                         event["resolved_text"] = resolved
@@ -282,6 +286,8 @@ def _extract_text_and_record(event: dict) -> tuple[Optional[str], Optional[str]]
             rec = seg_data.get("file")
             if isinstance(rec, str):
                 record_file = rec
+        elif seg_type in {"face", "image"}:
+            continue
     return ("\n".join(text_parts) if text_parts else None, record_file)
 
 
@@ -329,7 +335,7 @@ def _strip_cq_and_whitespace(text: str) -> str:
     import re
 
     # Remove CQ codes like [CQ:face,id=67] or [CQ:image,...]
-    text = re.sub(r"\[CQ:[^\]]+\]", "", text)
+    text = re.sub(r"\[CQ:(face|image)[^\]]*\]", "", text, flags=re.IGNORECASE)
     # Normalize whitespace
     text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
     return text.strip()

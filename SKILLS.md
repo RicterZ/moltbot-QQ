@@ -34,7 +34,7 @@ Segment flags can be mixed/repeated; the order you type is the order sent.
 - Watch incoming QQ messages as JSON: `nap-msg watch [--from-group <gid>] [--from-user <uid>] [--ignore-startswith <pfx>]`
 
 #### Output
-- Default: one-line JSON per message, only key fields kept (`user_id`, `group_id`, `message_type`, `message_id`, `raw_message`, `message`, `resolved_text`, `post_type`, `time`, `target_id`). CQ 表情/图片标记会被剔除，空消息会被忽略。
-- 默认忽略前缀：`/`、`[CQ:`（可用 `--ignore-startswith` 覆盖）。
+- Default: one-line JSON per message, only key fields kept (`user_id`, `group_id`, `message_type`, `message_id`, `raw_message`, `message`, `resolved_text`, `post_type`, `time`, `target_id`). CQ 表情/图片段会被剔除，空消息会被忽略。
+- 默认忽略前缀：`/`（可用 `--ignore-startswith` 覆盖）。
 - `resolved_text` includes ASR transcription when Tencent creds are set (`TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY`); otherwise voice messages are ignored.
 - Logs are suppressed by default to avoid interfering with consumers; add `--verbose` to debug.
