@@ -176,5 +176,7 @@ def _build_napcat_file_url(path: str) -> Optional[str]:
     if idx == -1:
         return None
     rel = path[idx:] if path.startswith(marker) else path[idx:]
-    base = os.getenv("NAPCAT_FILE_BASE", "http://192.168.13.100/napcat")
+    base = os.getenv("NAPCAT_FILE_BASE", "").strip()
+    if not base:
+        return None
     return f"{base.rstrip('/')}/{rel.lstrip('/')}"
