@@ -9,20 +9,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import websockets
-from moltbot import chat_once_async
 
 from .client import NapcatRelayClient, send_group_message, send_private_message
 from .messages import TextMessage
+from .moltbot_client import MoltbotConfig, MoltbotGatewayManager
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MoltbotConfig:
-    url: str
-    token: Optional[str]
-    password: Optional[str]
-    wait_timeout: float
 
 
 def _load_allow_senders() -> set[str]:
@@ -42,7 +34,7 @@ def load_moltbot_config() -> MoltbotConfig:
 async def handle_message_event(
     event: Dict[str, Any],
     napcat_client: NapcatRelayClient,
-    moltbot_cfg: MoltbotConfig,
+    moltbot_mgr: MoltbotGatewayManager,
     allow_senders: set[str],
     fire_and_forget: bool,
     ignore_prefixes: list[str],
@@ -73,14 +65,7 @@ async def handle_message_event(
     )
     session_key = _build_session_key(event)
     try:
-        response = await chat_once_async(
-            url=moltbot_cfg.url,
-            token=moltbot_cfg.token,
-            password=moltbot_cfg.password,
-            session_key=session_key,
-            message=text,
-            wait_timeout=moltbot_cfg.wait_timeout,
-        )
+        response = moltbot_mgr.send_chat(text=text, session_key=session_key)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to send to moltbot: %s", exc)
         return
@@ -167,7 +152,7 @@ def _build_session_key(event: Dict[str, Any]) -> str:
 async def watch_napcat_events(
     event_url: str,
     napcat_client: NapcatRelayClient,
-    moltbot_cfg: MoltbotConfig,
+    moltbot_mgr: MoltbotGatewayManager,
     fire_and_forget: bool,
     ignore_prefixes: list[str],
 ) -> None:
@@ -203,7 +188,7 @@ async def watch_napcat_events(
                         await handle_message_event(
                             event,
                             napcat_client,
-                            moltbot_cfg,
+                            moltbot_mgr,
                             allow_senders,
                             fire_and_forget,
                             ignore_prefixes,
@@ -242,13 +227,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         raise SystemExit("NAPCAT_URL is required")
     napcat_client = NapcatRelayClient(url=napcat_url)
     moltbot_cfg = load_moltbot_config()
+    moltbot_mgr = MoltbotGatewayManager(moltbot_cfg)
 
     try:
         asyncio.run(
             watch_napcat_events(
                 napcat_url,
                 napcat_client,
-                moltbot_cfg,
+                moltbot_mgr,
                 args.fire_and_forget,
                 ignore_prefixes,
             )
