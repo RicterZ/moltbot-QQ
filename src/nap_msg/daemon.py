@@ -181,6 +181,7 @@ async def watch_napcat_events(
             logger.info("Connecting to Napcat event stream %s", event_url)
             async with websockets.connect(event_url, max_size=None) as ws:
                 async for raw in ws:
+                    logger.debug("WS raw frame: %s", raw)
                     try:
                         event = json.loads(raw)
                     except json.JSONDecodeError:
@@ -227,7 +228,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ignore_prefixes = [p for p in (args.ignore_startswith or []) if isinstance(p, str) and p]
 
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
     logger.info(
