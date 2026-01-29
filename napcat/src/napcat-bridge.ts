@@ -1,128 +1,121 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createInterface } from "node:readline";
 
-interface SendMessageParams {
-  to: string;
-  text: string;
-  isGroup?: boolean;
-  mediaUrl?: string;
+interface RpcRequest {
+  jsonrpc: "2.0";
+  method: string;
+  params?: any;
+  id?: number;
+}
+
+interface RpcResponse {
+  jsonrpc: "2.0";
+  id?: number | string | null;
+  result?: any;
+  error?: { code: number; message: string };
+  method?: string;
+  params?: any;
 }
 
 export class NapcatRpcClient {
-  private process: ChildProcess | null = null;
-  private connected: boolean = false;
-  private messageHandlers: ((message: any) => void)[] = [];
+  private proc: ChildProcessWithoutNullStreams | null = null;
+  private rl: ReturnType<typeof createInterface> | null = null;
+  private nextId = 1;
+  private pending = new Map<number | string, (resp: RpcResponse) => void>();
+  private listeners: Array<(message: any) => void> = [];
+  private starting = false;
 
-  constructor() {}
+  async connect(cliPath = "nap-msg", args: string[] = ["rpc"]): Promise<boolean> {
+    if (this.proc || this.starting) return true;
+    this.starting = true;
+    return new Promise((resolve) => {
+      try {
+        this.proc = spawn(cliPath, args, { stdio: ["pipe", "pipe", "inherit"] });
+        this.rl = createInterface({ input: this.proc.stdout });
+        this.rl.on("line", (line) => this.handleLine(line));
+        this.proc.on("exit", (code, signal) => {
+          console.error(`nap-msg rpc exited code=${code} signal=${signal ?? "none"}`);
+          this.cleanup();
+        });
 
-  async connect(): Promise<boolean> {
-    // 启动nap-msg watch来监听消息
+        this.initialize()
+          .then(() => {
+            this.starting = false;
+            resolve(true);
+          })
+          .catch((err) => {
+            console.error("Failed to init nap-msg rpc:", err);
+            this.starting = false;
+            resolve(false);
+          });
+      } catch (error) {
+        console.error("Failed to start nap-msg rpc:", error);
+        this.starting = false;
+        resolve(false);
+      }
+    });
+  }
+
+  private async initialize(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const result = await this.send("initialize", {});
+    console.log("Napcat RPC initialized:", result);
+  }
+
+  private handleLine(line: string) {
+    if (!line.trim()) return;
     try {
-      this.process = spawn('nap-msg', ['watch']);
-      
-      this.process.stdout?.setEncoding('utf8');
-      this.process.stdout?.on('data', (data) => {
-        // 处理从nap-msg watch接收到的数据
-        const lines = data.toString().split('\n');
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const messageObj = JSON.parse(line.trim());
-              // 调用所有消息处理器
-              for (const handler of this.messageHandlers) {
-                handler(messageObj);
-              }
-            } catch (parseError) {
-              // 忽略非JSON格式的日志行
-              if (line.includes('Napcat process closed')) {
-                console.log(line.trim());
-              }
-            }
-          }
-        }
-      });
-
-      this.process.stderr?.on('data', (data) => {
-        console.error('Napcat stderr:', data.toString());
-      });
-
-      this.process.on('close', (code) => {
-        console.log(`Napcat process closed with code ${code}`);
-        this.connected = false;
-      });
-
-      // 等待一段时间让连接建立
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      this.connected = true;
-      console.log('Napcat RPC connected');
-      return true;
+      const obj: RpcResponse = JSON.parse(line);
+      if (obj.id !== undefined && this.pending.has(obj.id as any)) {
+        const cb = this.pending.get(obj.id as any)!;
+        this.pending.delete(obj.id as any);
+        cb(obj);
+        return;
+      }
+      if (obj.method === "message" && obj.params) {
+        const payload = (obj.params as any).message ?? obj.params;
+        this.listeners.forEach((l) => l(payload));
+      }
     } catch (error) {
-      console.error('Failed to start nap-msg watch:', error);
-      return false;
+      console.error("Failed to parse RPC response:", error);
     }
   }
 
   async send(method: string, params?: any): Promise<any> {
-    if (!this.connected) {
-      throw new Error('Napcat RPC client not connected');
+    if (!this.proc || !this.proc.stdin?.writable) {
+      throw new Error("Napcat RPC client not connected");
     }
-
-    try {
-      switch (method) {
-        case 'message.send':
-          return await this.sendMessage(params);
-        default:
-          throw new Error(`Unsupported method: ${method}`);
-      }
-    } catch (error) {
-      console.error(`Error calling method ${method}:`, error);
-      throw error;
-    }
+    const id = this.nextId++;
+    const payload: RpcRequest = { jsonrpc: "2.0", id, method, params };
+    this.proc.stdin.write(JSON.stringify(payload) + "\n");
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, (resp) => {
+        if (resp.error) reject(new Error(resp.error.message));
+        else resolve(resp.result);
+      });
+    });
   }
 
-  private async sendMessage(params: SendMessageParams): Promise<any> {
-    const { execSync } = require('child_process');
-    
-    let cmd: string;
-    if (params.isGroup) {
-      // 发送到群组
-      cmd = `nap-msg send-group ${params.to} --text "${params.text.replace(/"/g, '\\"')}"`;
-    } else {
-      // 发送私聊消息
-      cmd = `nap-msg send ${params.to} --text "${params.text.replace(/"/g, '\\"')}"`;
-    }
-
-    if (params.mediaUrl) {
-      // 如果有媒体文件，添加到命令中
-      cmd += ` --media "${params.mediaUrl}"`;
-    }
-
-    try {
-      const result = execSync(cmd, { encoding: 'utf8' });
-      return { success: true, result };
-    } catch (error) {
-      console.error('Error sending message:', error);
-      throw error;
-    }
-  }
-
-  subscribe(handler: (message: any) => void): () => void {
-    this.messageHandlers.push(handler);
-    
-    // 返回取消订阅函数
+  subscribe(listener: (message: any) => void): () => void {
+    this.listeners.push(listener);
     return () => {
-      const index = this.messageHandlers.indexOf(handler);
-      if (index !== -1) {
-        this.messageHandlers.splice(index, 1);
-      }
+      this.listeners = this.listeners.filter((l) => l !== listener);
     };
   }
 
   disconnect() {
-    if (this.process) {
-      this.process.kill();
-      this.process = null;
+    this.cleanup();
+  }
+
+  private cleanup() {
+    this.rl?.close();
+    this.rl = null;
+    if (this.proc) {
+      this.proc.kill();
+      this.proc = null;
     }
-    this.connected = false;
-    this.messageHandlers = [];
+    this.pending.clear();
+    this.listeners = [];
+    this.starting = false;
   }
 }

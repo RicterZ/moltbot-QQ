@@ -14,7 +14,5 @@ Env vars load automatically (including from a local `.env`).
 - Methods:
   - `initialize` → responds with capabilities `{streaming:true, attachments:true}`
   - `message.send` (`to`/`chatId`, optional `isGroup`, `text`)
-  - `watch.subscribe` → returns `subscription` id; events are notifications `method: "message", params: {subscription, message: {sender, chatId, isGroup, text, messageId}}`
-  - `watch.unsubscribe`
-  - `messages.history` → returns `{messages: []}`
+  - `messages.history` → returns `{messages: []}` (not implemented)
   - `chats.list` → returns `[]`
