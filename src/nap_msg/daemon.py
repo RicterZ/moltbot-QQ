@@ -65,6 +65,12 @@ async def handle_message_event(
         if check_text.startswith(prefix):
             return
 
+    logger.info(
+        "Forwarding to moltbot: session=%s chars=%d preview=%r",
+        _build_session_key(event),
+        len(text),
+        text[:200],
+    )
     session_key = _build_session_key(event)
     try:
         response = await chat_once_async(
@@ -96,6 +102,13 @@ async def handle_message_event(
             await send_group_message(napcat_client, str(event.get("group_id", "")), [segment])
         else:
             await send_private_message(napcat_client, str(event.get("user_id", "")), [segment])
+        logger.info(
+            "Sent reply via Napcat: type=%s target=%s chars=%d preview=%r",
+            message_type,
+            event.get("group_id") if message_type == "group" else event.get("user_id"),
+            len(reply_text),
+            reply_text[:200],
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to send reply via Napcat: %s", exc)
 
