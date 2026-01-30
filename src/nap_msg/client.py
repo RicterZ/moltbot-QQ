@@ -27,15 +27,34 @@ class NapcatRelayClient:
             await ws.send(payload)
             logger.debug("Sent command echo=%s action=%s", command.echo, command.action.value)
             try:
-                raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
-                logger.debug("Received response echo=%s bytes=%d", command.echo, len(raw))
-                return json.loads(raw)
+                return await self._wait_for_response(ws, command.echo)
             except asyncio.TimeoutError:
                 logger.warning("Napcat response timed out after %.1fs", self.timeout)
                 return {"status": "timeout", "echo": command.echo}
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Napcat websocket error echo=%s: %s", command.echo, exc)
                 raise
+
+    async def _wait_for_response(self, ws, echo: str) -> Dict[str, Any]:
+        """Skip non-command frames (e.g., lifecycle meta_events) until matching echo arrives."""
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+            logger.debug("Received frame bytes=%d", len(raw))
+            try:
+                data = json.loads(raw)
+            except Exception:
+                logger.debug("Ignoring non-JSON frame")
+                continue
+
+            if data.get("post_type") == "meta_event":
+                logger.debug("Ignoring meta_event frame")
+                continue
+
+            if data.get("echo") and data.get("echo") != echo:
+                logger.debug("Ignoring frame with mismatched echo=%s", data.get("echo"))
+                continue
+
+            return data
 
 
 async def send_group_message(
