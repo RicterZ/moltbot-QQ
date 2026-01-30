@@ -26,6 +26,7 @@ KEEP_FIELDS = {
 }
 
 DEFAULT_IGNORE_PREFIXES = ["/"]
+PASSTHROUGH_COMMANDS = {"/new", "/reset"}
 CQ_CODE_PATTERN = re.compile(r"\[CQ:(face|image)[^\]]*\]", re.IGNORECASE)
 
 
@@ -90,7 +91,10 @@ async def watch_forever(
                         text_content = cleaned
                         first_line = next((ln for ln in text_content.splitlines() if ln.strip()), text_content)
                         check_text = first_line.lstrip()
-                        if ignore_prefixes and any(check_text.startswith(pfx) for pfx in ignore_prefixes):
+                        passthrough_command = _is_passthrough_command(check_text)
+                        if ignore_prefixes and not passthrough_command and any(
+                            check_text.startswith(pfx) for pfx in ignore_prefixes
+                        ):
                             continue
                     elif not record_file:
                         continue
@@ -248,3 +252,7 @@ def _strip_cq_and_whitespace(text: str) -> str:
     text = CQ_CODE_PATTERN.sub("", text)
     text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
     return text.strip()
+
+
+def _is_passthrough_command(text: str) -> bool:
+    return text.strip() in PASSTHROUGH_COMMANDS
