@@ -118,13 +118,19 @@ async def _extract_message_content(
         if not isinstance(item, dict):
             continue
 
-        # sub_type 0: icons
-        sub_type = item.get("sub_type", 0)
+        seg_type = item.get("type", "")
+        seg_data = item.get("data", {}) or {}
+
+        raw_sub_type = item.get("sub_type", seg_data.get("sub_type", 0))
+        try:
+            sub_type = int(raw_sub_type)
+        except Exception:
+            sub_type = 0
+
+        # sub_type 1: emoji/face payloads that should be ignored
         if sub_type == 1:
             continue
 
-        seg_type = item.get("type", "")
-        seg_data = item.get("data", {}) or {}
         if seg_type == "at":
             continue
         if seg_type == "text":
