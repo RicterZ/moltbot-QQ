@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import logging
-import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -197,13 +196,13 @@ async def _resolve_text(
 
 
 async def _download_media(url: str, media_type: str) -> Optional[str]:
-    """Download media to a temp folder and return file:// URI."""
+    """Download media to working directory napcat folder and return file:// URI."""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         return None
 
     month = datetime.utcnow().strftime("%Y-%m")
-    base_dir = Path(tempfile.gettempdir()) / "napcat" / media_type / month
+    base_dir = Path.cwd() / "napcat" / media_type / month
     base_dir.mkdir(parents=True, exist_ok=True)
 
     suffix = Path(parsed.path).suffix or ".bin"
