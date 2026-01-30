@@ -148,7 +148,7 @@ async def _extract_message_content(
         text_parts.append(record_text)
 
     cleaned = "\n".join(line.strip() for line in text_parts if line and line.strip())
-    return (cleaned if cleaned else None, images)
+    return cleaned if cleaned else None, images
 
 
 async def _resolve_text(
