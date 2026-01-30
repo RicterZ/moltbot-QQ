@@ -58,7 +58,8 @@ async def watch_forever(
                     if from_user and str(event.get("user_id")) != str(from_user):
                         continue
 
-                    text_content, images, videos, files = await _extract_message_content(event, ws, url, asr_enabled)
+                    text_content, media = await _extract_message_content(event, ws, url, asr_enabled)
+                    has_media = any(media.values())
                     if text_content:
                         first_line = next((ln for ln in text_content.splitlines() if ln.strip()), text_content)
                         check_text = first_line.lstrip()
@@ -67,17 +68,14 @@ async def watch_forever(
                             check_text.startswith(pfx) for pfx in ignore_prefixes
                         ):
                             continue
-                    if not text_content and not images and not videos and not files:
+                    if not text_content and not has_media:
                         continue
 
                     if text_content:
                         event["text"] = text_content
-                    if images:
-                        event["images"] = images
-                    if videos:
-                        event["videos"] = videos
-                    if files:
-                        event["files"] = files
+                    for key, values in media.items():
+                        if values:
+                            event[key] = values
                     filtered = {k: v for k, v in event.items() if k in KEEP_FIELDS and v is not None}
                     try:
                         maybe_coro = emit(filtered)
@@ -117,16 +115,15 @@ def _event_to_receive_params(event: dict) -> dict:
 
 async def _extract_message_content(
     event: dict, ws, napcat_ws: str, allow_asr: bool
-) -> tuple[Optional[str], list[str], list[str], list[str]]:
+) -> tuple[Optional[str], dict[str, list[str]]]:
     message = event.get("message")
     if isinstance(message, str):
-        return message, []
+        return message, {"images": [], "videos": [], "files": []}
     if not isinstance(message, list):
-        return None, []
-    text_parts = []
-    images = []
-    videos = []
-    files = []
+        return None, {"images": [], "videos": [], "files": []}
+
+    text_parts: list[str] = []
+    media: dict[str, list[str]] = {"images": [], "videos": [], "files": []}
     record_text = None
     for item in message:
         if not isinstance(item, dict):
@@ -157,36 +154,26 @@ async def _extract_message_content(
                 record_text = await _resolve_text(None, rec_path.strip(), ws, napcat_ws, allow_asr)
         elif seg_type == "face":
             continue
-        elif seg_type == "image":
-            image_url = seg_data.get("url", "")
-            if not image_url:
+        elif seg_type in {"image", "video", "file"}:
+            url = seg_data.get("url", "")
+            if not url:
                 continue
 
-            local_path = await _download_media(image_url, media_type="image")
+            local_path = await _download_media(url, media_type=seg_type)
             if local_path:
-                images.append(local_path)
-        elif seg_type == "video":
-            video_url = seg_data.get("url", "")
-            if not video_url:
-                continue
-
-            local_path = await _download_media(video_url, media_type="video")
-            if local_path:
-                videos.append(local_path)
-        elif seg_type == "file":
-            file_url = seg_data.get("url", "")
-            if not file_url:
-                continue
-
-            local_path = await _download_media(file_url, media_type="file")
-            if local_path:
-                files.append(local_path)
+                bucket = {
+                    "image": "images",
+                    "video": "videos",
+                    "file": "files",
+                }.get(seg_type)
+                if bucket:
+                    media[bucket].append(local_path)
 
     if record_text:
         text_parts.append(record_text)
 
     cleaned = "\n".join(line.strip() for line in text_parts if line and line.strip())
-    return cleaned if cleaned else None, images, videos, files
+    return cleaned if cleaned else None, media
 
 
 async def _resolve_text(
