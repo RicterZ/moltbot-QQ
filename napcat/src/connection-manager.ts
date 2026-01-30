@@ -4,8 +4,6 @@ class ConnectionManager {
   private static instance: ConnectionManager;
   private client: NapcatRpcClient | null = null;
   private isConnected: boolean = false;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
   private messageHandlers: ((message: any) => void)[] = [];
   private connectPromise: Promise<boolean> | null = null;
 
@@ -19,7 +17,6 @@ class ConnectionManager {
   }
 
   async connect(): Promise<boolean> {
-    // 如果已经有连接或正在进行连接，则直接返回
     if (this.isConnected || this.connectPromise) {
       return this.isConnected;
     }
@@ -31,12 +28,9 @@ class ConnectionManager {
 
         if (connected) {
           this.isConnected = true;
-          this.reconnectAttempts = 0;
-          
-          // 设置消息订阅
+
           if (this.client) {
             this.client.subscribe((message) => {
-              // 调用所有注册的消息处理器
               for (const handler of this.messageHandlers) {
                 try {
                   handler(message);
@@ -46,7 +40,7 @@ class ConnectionManager {
               }
             });
           }
-          
+
           console.log('Napcat persistent connection established');
           resolve(true);
         } else {

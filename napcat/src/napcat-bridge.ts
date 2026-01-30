@@ -24,7 +24,6 @@ export class NapcatRpcClient {
   private pending = new Map<number | string, (resp: RpcResponse) => void>();
   private listeners: Array<(message: any) => void> = [];
   private starting = false;
-  private subscriptionId: number | null = null;
 
   async connect(cliPath = "nap-msg", args: string[] = ["rpc"]): Promise<boolean> {
     if (this.proc || this.starting) return true;
@@ -67,7 +66,6 @@ export class NapcatRpcClient {
   private async watchSubscribe(): Promise<void> {
     const res = await this.send("watch.subscribe", {});
     if (res && res.subscription) {
-      this.subscriptionId = res.subscription;
       console.log(`Napcat RPC subscribed (subscription=${res.subscription})`);
     }
   }
@@ -126,7 +124,6 @@ export class NapcatRpcClient {
     }
     this.pending.clear();
     this.listeners = [];
-    this.subscriptionId = null;
     this.starting = false;
   }
 }

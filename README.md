@@ -3,8 +3,9 @@
 CLI relay that sends messages from moltbot to a Napcat WebSocket backend.
 
 ## Usage
-- Install with Poetry: `poetry install`
-- Run CLI via Poetry: `poetry run nap-msg --help`
+
+- Install with pip: `pip install .`
+- Run cli command: `nap-msg rpc`
 
 Napcat backend: set env `NAPCAT_URL` (or pass `--napcat-url`).
 

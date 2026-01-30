@@ -12,7 +12,6 @@ from typing import List
 from .client import DEFAULT_TIMEOUT, NapcatRelayClient, send_group_forward_message, send_group_message, send_private_message
 from .messages import FileMessage, ForwardNode, ImageMessage, ReplyMessage, TextMessage, VideoMessage
 from .rpc import run_rpc_server
-from .watch import run_watch
 
 
 def _segment_action(segment_type: str):
