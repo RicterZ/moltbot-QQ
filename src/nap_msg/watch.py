@@ -17,7 +17,7 @@ KEEP_FIELDS = {
     "group_id",
     "message_type",
     "message_id",
-    "raw_message",
+    "text",
     "images",
     # "time",
     # "target_id",
@@ -65,7 +65,7 @@ async def watch_forever(
                         continue
 
                     if text_content:
-                        event["raw_message"] = text_content
+                        event["text"] = text_content
                     if images:
                         event["images"] = images
                     filtered = {k: v for k, v in event.items() if k in KEEP_FIELDS and v is not None}
@@ -97,7 +97,7 @@ def _event_to_receive_params(event: dict) -> dict:
         "sender": event.get("user_id"),
         "chatId": chat_id,
         "isGroup": is_group,
-        "text": event.get("raw_message"),
+        "text": event.get("text"),
         "messageId": event.get("message_id"),
         "images": event.get("images"),
     }
