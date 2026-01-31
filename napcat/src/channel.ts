@@ -181,23 +181,59 @@ async function handleNapcatInbound(params: {
     accountId: route.accountId,
   });
 
-  await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
-    ctx: ctxPayload,
-    cfg: params.cfg,
-    dispatcherOptions: {
-      deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
-        const text = formatNapcatPayloadText(payload, tableMode);
-        if (!text) return;
-        await sendNapcatMessage({ chatIdRaw, isGroup, text });
-        params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+  const bufferedDispatch = async () =>
+    runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+      ctx: ctxPayload,
+      cfg: params.cfg,
+      dispatcherOptions: {
+        deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
+          const text = formatNapcatPayloadText(payload, tableMode);
+          if (!text) return;
+          await sendNapcatMessage({ chatIdRaw, isGroup, text });
+          params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+        },
+        onError: (err: Error, info: { kind: string }) => {
+          params.log?.error?.(
+            `[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`,
+          );
+        },
       },
-      onError: (err: Error, info: { kind: string }) => {
-        params.log?.error?.(
-          `[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`,
-        );
-      },
-    },
-  });
+    });
+
+  const streamingDispatch = (runtime.channel.reply as unknown as {
+    createReplyDispatcherWithTyping?: typeof bufferedDispatch;
+  }).createReplyDispatcherWithTyping;
+
+  if (typeof streamingDispatch === "function") {
+    try {
+      await streamingDispatch({
+        ctx: ctxPayload,
+        cfg: params.cfg,
+        dispatcherOptions: {
+          deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
+            const text = formatNapcatPayloadText(payload, tableMode);
+            if (!text) return;
+            await sendNapcatMessage({ chatIdRaw, isGroup, text });
+            params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+          },
+          onError: (err: Error, info: { kind: string }) => {
+            params.log?.error?.(
+              `[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`,
+            );
+          },
+        },
+      } as any);
+      return;
+    } catch (err) {
+      params.log?.warn?.(
+        `[${route.accountId}] napcat streaming dispatcher failed, falling back: ${String(
+          (err as Error)?.message ?? err,
+        )}`,
+      );
+    }
+  }
+
+  await bufferedDispatch();
 }
 
 // Napcat channel plugin implementation
