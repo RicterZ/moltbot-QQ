@@ -64,16 +64,29 @@ const parseTarget = (raw?: string | number | null): ParsedTarget | null => {
 
 type ReplyDispatcher = (params: any) => Promise<void>;
 
-function resolveReplyDispatchers(replyApi: Record<string, any>, log?: ChannelLogSink): {
+function shouldUseStreaming(): boolean {
+  const raw = process.env.NAPCAT_STREAMING || process.env.NAPCAT_ENABLE_STREAMING;
+  if (!raw) return false;
+  const flag = raw.trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(flag);
+}
+
+function resolveReplyDispatchers(
+  replyApi: Record<string, any>,
+  preferStreaming: boolean,
+  log?: ChannelLogSink,
+): {
   primary: ReplyDispatcher;
   fallback?: ReplyDispatcher;
   primaryLabel: string;
 } {
-  const candidates: Array<{ key: string; label: string }> = [
-    { key: "dispatchReplyWithStreamingDispatcher", label: "streaming" },
-    { key: "createReplyDispatcherWithTyping", label: "typing" },
-    { key: "createReplyDispatcher", label: "typing" },
-  ];
+  const candidates: Array<{ key: string; label: string }> = preferStreaming
+    ? [
+        { key: "dispatchReplyWithStreamingDispatcher", label: "streaming" },
+        { key: "createReplyDispatcherWithTyping", label: "typing" },
+        { key: "createReplyDispatcher", label: "typing" },
+      ]
+    : [];
 
   let fallback: ReplyDispatcher | undefined;
   const buffered = replyApi.dispatchReplyWithBufferedBlockDispatcher;
@@ -219,8 +232,10 @@ async function handleNapcatInbound(params: {
   });
 
   const replyApi = runtime.channel.reply as Record<string, any>;
+  const preferStreaming = shouldUseStreaming();
   const { primary: dispatcher, fallback: dispatcherFallback, primaryLabel } = resolveReplyDispatchers(
     replyApi,
+    preferStreaming,
     params.log,
   );
 
