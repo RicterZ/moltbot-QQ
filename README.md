@@ -1,54 +1,46 @@
-# moltbot-napcat-bridge
+# openclaw-napcat
 
-CLI relay that sends messages from moltbot to a Napcat WebSocket backend.
+Napcat channel plugin for OpenClaw plus the `nap-msg` CLI bridge to a Napcat WebSocket backend.
 
-## Usage
+## Quick Start
 
-- Install with pip: `pip install .`
-- Run cli command: `nap-msg rpc`
-
-Napcat backend: set env `NAPCAT_URL` (or pass `--napcat-url`).
-
-## Install into Openclaw
-1) Copy the Napcat plugin folder to the Openclaw extensions path:
-   - `cp -r napcat ~/.openclaw/extensions/napcat`
-2) Enable the channel and plugin in your Openclaw config (e.g. `~/.openclaw/config.json`):
-   ```json
-   {
-     "channels": {
-       "napcat": {
-         "enabled": true
-       }
-     },
-     "plugins": {
-       "entries": {
-         "napcat": {
-           "enabled": true
-         }
-       }
-     }
-   }
+### Install
+1) Install the OpenClaw plugin (Napcat channel):
+   ```bash
+   openclaw plugins install .
    ```
-3) Place your `.env` (with `NAPCAT_URL` and any related variables) in the Openclaw working directory so the runtime picks it up when launching.
-4) Install the CLI/bridge into your environment (installs `nap-msg` entrypoint):
+   This copies the plugin into `~/.openclaw/extensions/napcat` and registers it.
+
+2) Install the nap-msg CLI (Napcat WebSocket JSON-RPC bridge):
    ```bash
    pip install .
    ```
+   This provides the `nap-msg` executable used by the channel.
 
-## Test (manual RPC receive)
-1. Export Napcat URL in the shell: `set NAPCAT_URL=ws://<host>:<port>` (PowerShell) or `export NAPCAT_URL=...` (bash).
-2. Terminal A: start RPC server and leave it running: `poetry run nap-msg rpc`.
-3. In the same terminal, type a subscribe request and press Enter on one line:
-   ```
-   {"jsonrpc":"2.0","id":1,"method":"watch.subscribe","params":{}}
-   ```
-   You should see a `{"result":{"subscription":...},"id":1,...}` response.
-4. Trigger a QQ message on Napcat; the RPC server should print a notification:
-   ```
-   {"jsonrpc":"2.0","method":"message","params":{"subscription":1,"message":{...}}}
-   ```
-5. To test sending, type:
-   ```
-   {"jsonrpc":"2.0","id":2,"method":"message.send","params":{"to":"<qq_id>","text":"hello","isGroup":false}}
-   ```
-   A `result` response means the send call was accepted.
+### Configure (OpenClaw)
+In `~/.openclaw/config.json`, enable and configure the channel. Minimal example:
+```json
+{
+  "channels": {
+    "napcat": {
+      "enabled": true,
+      "url": "ws://<napcat-host>:<port>",
+      "ignorePrefixes": ["/"]
+    }
+  },
+  "plugins": {
+    "entries": {
+      "napcat": { "enabled": true }
+    }
+  }
+}
+```
+Notes:
+- `url`: Napcat WebSocket endpoint (or set env `NAPCAT_URL`).
+- `ignorePrefixes`: optional; defaults to `["/"]` to skip slash-prefixed commands.
+- Optional: `fromGroup` / `fromUser` (only listen to specific group/user), `cliPath` (path to `nap-msg`), `timeoutMs`.
+
+After saving, restart the gateway:
+```bash
+openclaw gateway restart
+```
