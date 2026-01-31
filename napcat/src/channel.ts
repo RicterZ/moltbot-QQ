@@ -175,15 +175,17 @@ async function handleNapcatInbound(params: {
     accountId: route.accountId,
   });
 
-  const streamingDispatch = (runtime.channel.reply as unknown as {
+  const replyApi = runtime.channel.reply as unknown as {
     createReplyDispatcherWithTyping?: (params: unknown) => Promise<void>;
-  }).createReplyDispatcherWithTyping;
+    dispatchReplyWithBufferedBlockDispatcher: (params: unknown) => Promise<void>;
+  };
 
-  if (typeof streamingDispatch !== "function") {
-    throw new Error("createReplyDispatcherWithTyping not available in runtime.reply");
-  }
+  const dispatcher =
+    typeof replyApi.createReplyDispatcherWithTyping === "function"
+      ? replyApi.createReplyDispatcherWithTyping
+      : replyApi.dispatchReplyWithBufferedBlockDispatcher;
 
-  await streamingDispatch({
+  await dispatcher({
     ctx: ctxPayload,
     cfg: params.cfg,
     dispatcherOptions: {
