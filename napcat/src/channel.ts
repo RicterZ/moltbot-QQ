@@ -31,6 +31,15 @@ type NapcatInboundMessage = {
 
 const activeClients = new Map<string, NapcatRpcClient>();
 
+function inferMediaKind(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const lower = value.toLowerCase();
+  if (lower.match(/\.(png|jpe?g|gif|webp|avif)(\?|$)/)) return "image";
+  if (lower.match(/\.(mp4|mov|mkv|webm)(\?|$)/)) return "video";
+  if (lower.match(/\.(mp3|wav|m4a|aac|flac|ogg|opus)(\?|$)/)) return "audio";
+  return "file";
+}
+
 function normalizeNapcatTarget(raw: string): NapcatTarget | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -67,6 +76,7 @@ async function getClient(account: ResolvedNapcatAccount): Promise<{
     cliPath: account.cliPath,
     napcatUrl: account.napcatUrl,
     timeoutMs: account.timeoutMs,
+    env: account.env,
   });
   await client.start();
   return {
@@ -111,6 +121,9 @@ async function handleInboundNapcatMessage(params: {
 
   if (!text && attachments.length === 0) return;
 
+  const mediaKind = inferMediaKind(attachments[0]);
+  const mediaPlaceholder = mediaKind ? `<media:${mediaKind}>` : "<media:attachment>";
+
   ctx.setStatus({
     ...ctx.getStatus(),
     accountId: account.accountId,
@@ -132,8 +145,8 @@ async function handleInboundNapcatMessage(params: {
   const fromLabel = message.isGroup
     ? `Napcat Group ${chatId ?? "unknown"}`
     : `Napcat ${senderId || "unknown"}`;
-  const attachmentLines = attachments.map((file) => `<media>${file}`);
-  const bodyContent = [text, ...attachmentLines].filter(Boolean).join("\n") || "<no content>";
+  const attachmentLines = attachments.map((file) => `<media:${mediaKind ?? "attachment"}>${file}`);
+  const bodyContent = [text || mediaPlaceholder, ...attachmentLines].filter(Boolean).join("\n");
   const body = runtime.channel.reply.formatInboundEnvelope({
     channel: "Napcat",
     from: fromLabel,
@@ -170,6 +183,11 @@ async function handleInboundNapcatMessage(params: {
     CommandAuthorized: true,
     OriginatingChannel: "napcat" as const,
     OriginatingTo: to,
+    MediaUrl: attachments[0],
+    MediaUrls: attachments.length > 0 ? attachments : undefined,
+    MediaPaths: attachments.length > 0 ? attachments : undefined,
+    MediaTypes: mediaKind ? [mediaKind] : undefined,
+    MediaType: mediaKind,
   });
 
   const prefixContext = createReplyPrefixContext({ cfg, agentId: route.agentId });

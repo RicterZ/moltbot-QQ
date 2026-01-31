@@ -12,6 +12,7 @@ export type NapcatAccountConfig = {
   fromUser?: string | number;
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  env?: Record<string, string>;
 };
 
 export type NapcatRootConfig = NapcatAccountConfig & {
@@ -31,6 +32,7 @@ export type ResolvedNapcatAccount = {
   fromUser?: string;
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  env?: Record<string, string>;
 };
 
 function normalizeId(value?: string | number): string | undefined {
@@ -49,7 +51,15 @@ export function listNapcatAccountIds(cfg: OpenClawConfig): string[] {
   const napcatCfg = (cfg.channels?.napcat ?? {}) as NapcatRootConfig;
   const ids = new Set<string>([DEFAULT_ACCOUNT_ID]);
   Object.keys(napcatCfg.accounts ?? {}).forEach((id) => ids.add(id));
-  return Array.from(ids);
+    return Array.from(ids);
+}
+
+function normalizeEnv(env?: Record<string, string>): Record<string, string> | undefined {
+  if (!env || typeof env !== "object") return undefined;
+  const entries = Object.entries(env)
+    .map(([k, v]) => [String(k).trim(), String(v).trim()] as [string, string])
+    .filter(([k, v]) => k && v);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 export function resolveNapcatAccount(params: {
@@ -82,5 +92,6 @@ export function resolveNapcatAccount(params: {
     fromUser: normalizeId(merged.fromUser),
     blockStreaming: merged.blockStreaming,
     blockStreamingCoalesce: merged.blockStreamingCoalesce,
+    env: normalizeEnv(merged.env),
   };
 }

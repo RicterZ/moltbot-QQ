@@ -39,6 +39,7 @@ Notes:
 - `url`: Napcat WebSocket endpoint (or set env `NAPCAT_URL`).
 - `ignorePrefixes`: optional; defaults to `["/"]` to skip slash-prefixed commands.
 - Optional: `fromGroup` / `fromUser` (only listen to specific group/user), `cliPath` (path to `nap-msg`), `timeoutMs`.
+- Optional `env`: map of extra environment variables passed to `nap-msg` (e.g., proxies).
 
 After saving, restart the gateway:
 ```bash

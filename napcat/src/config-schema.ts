@@ -25,6 +25,10 @@ export const napcatChannelConfigSchema: ChannelConfigSchema = {
           idleMs: { type: "number" },
         },
       },
+      env: {
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
       accounts: {
         type: "object",
         additionalProperties: {
@@ -50,6 +54,10 @@ export const napcatChannelConfigSchema: ChannelConfigSchema = {
                 minChars: { type: "number" },
                 idleMs: { type: "number" },
               },
+            },
+            env: {
+              type: "object",
+              additionalProperties: { type: "string" },
             },
           },
         },
