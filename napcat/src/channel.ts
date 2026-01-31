@@ -19,6 +19,13 @@ type ParsedTarget = {
   canonical: string;
 };
 
+// Drop lone surrogate code units to avoid UTF-8 errors on Windows/Python.
+function sanitizeUtf8(text: string): string {
+  return text
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "")
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
+}
+
 const normalizeId = (value?: string | number | null): string | null => {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
@@ -61,7 +68,7 @@ async function sendNapcatMessage(params: { chatIdRaw: string; isGroup: boolean; 
     chatId: params.chatIdRaw,
     to: params.chatIdRaw,
     isGroup: params.isGroup,
-    text: params.text,
+    text: sanitizeUtf8(params.text),
   });
 }
 
@@ -82,7 +89,8 @@ function formatNapcatPayloadText(
   }
   const joined = parts.join("\n").trim();
   if (!joined) return null;
-  return runtime.channel.text.convertMarkdownTables(joined, tableMode);
+  const converted = runtime.channel.text.convertMarkdownTables(joined, tableMode);
+  return sanitizeUtf8(converted);
 }
 
 async function handleNapcatInbound(params: {
@@ -175,17 +183,7 @@ async function handleNapcatInbound(params: {
     accountId: route.accountId,
   });
 
-  const replyApi = runtime.channel.reply as unknown as {
-    createReplyDispatcherWithTyping?: (params: unknown) => Promise<void>;
-    dispatchReplyWithBufferedBlockDispatcher: (params: unknown) => Promise<void>;
-  };
-
-  const dispatcher =
-    typeof replyApi.createReplyDispatcherWithTyping === "function"
-      ? replyApi.createReplyDispatcherWithTyping
-      : replyApi.dispatchReplyWithBufferedBlockDispatcher;
-
-  await dispatcher({
+  await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: params.cfg,
     dispatcherOptions: {
@@ -272,7 +270,7 @@ export const napcatPlugin: ChannelPlugin<any> = {
       if (!target) {
         throw new Error("napcat target is required");
       }
-      const message = text?.trim() ?? "";
+      const message = sanitizeUtf8(text?.trim() ?? "");
       if (!message) {
         throw new Error("napcat message text is empty");
       }
@@ -293,7 +291,7 @@ export const napcatPlugin: ChannelPlugin<any> = {
       if (!target) {
         throw new Error("napcat target is required");
       }
-      const payloadText = [text, mediaUrl].filter(Boolean).join("\n").trim();
+      const payloadText = sanitizeUtf8([text, mediaUrl].filter(Boolean).join("\n").trim());
       if (!payloadText) {
         throw new Error("napcat message text is empty");
       }
