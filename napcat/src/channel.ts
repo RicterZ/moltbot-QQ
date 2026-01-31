@@ -19,11 +19,6 @@ type ParsedTarget = {
   canonical: string;
 };
 
-// Drop lone surrogate code units to avoid Windows/Python UTF-8 errors.
-function sanitizeUtf8(text: string): string {
-  return text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "").replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
-}
-
 const normalizeId = (value?: string | number | null): string | null => {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
@@ -66,7 +61,7 @@ async function sendNapcatMessage(params: { chatIdRaw: string; isGroup: boolean; 
     chatId: params.chatIdRaw,
     to: params.chatIdRaw,
     isGroup: params.isGroup,
-    text: sanitizeUtf8(params.text),
+    text: params.text,
   });
 }
 
@@ -87,8 +82,7 @@ function formatNapcatPayloadText(
   }
   const joined = parts.join("\n").trim();
   if (!joined) return null;
-  const converted = runtime.channel.text.convertMarkdownTables(joined, tableMode);
-  return sanitizeUtf8(converted);
+  return runtime.channel.text.convertMarkdownTables(joined, tableMode);
 }
 
 async function handleNapcatInbound(params: {
@@ -181,22 +175,57 @@ async function handleNapcatInbound(params: {
     accountId: route.accountId,
   });
 
-  // Use buffered dispatcher for reliability (avoids missing messages if streaming API is unavailable).
-  await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
-    ctx: ctxPayload,
-    cfg: params.cfg,
-    dispatcherOptions: {
-      deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
-        const text = formatNapcatPayloadText(payload, tableMode);
-        if (!text) return;
-        await sendNapcatMessage({ chatIdRaw, isGroup, text });
-        params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+  const dispatchBuffered = () =>
+    runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+      ctx: ctxPayload,
+      cfg: params.cfg,
+      dispatcherOptions: {
+        deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
+          const text = formatNapcatPayloadText(payload, tableMode);
+          if (!text) return;
+          await sendNapcatMessage({ chatIdRaw, isGroup, text });
+          params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+        },
+        onError: (err: Error, info: { kind: string }) => {
+          params.log?.error?.(`[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`);
+        },
       },
-      onError: (err: Error, info: { kind: string }) => {
-        params.log?.error?.(`[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`);
-      },
-    },
-  });
+    });
+
+  const streamingDispatch = (runtime.channel.reply as unknown as {
+    createReplyDispatcherWithTyping?: typeof dispatchBuffered;
+  }).createReplyDispatcherWithTyping;
+
+  if (typeof streamingDispatch === "function") {
+    try {
+      await streamingDispatch({
+        ctx: ctxPayload,
+        cfg: params.cfg,
+        dispatcherOptions: {
+          deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
+            const text = formatNapcatPayloadText(payload, tableMode);
+            if (!text) return;
+            await sendNapcatMessage({ chatIdRaw, isGroup, text });
+            params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
+          },
+          onError: (err: Error, info: { kind: string }) => {
+            params.log?.error?.(
+              `[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`,
+            );
+          },
+        },
+      } as any);
+      return;
+    } catch (err) {
+      params.log?.warn?.(
+        `[${route.accountId}] napcat streaming dispatcher failed, falling back to buffered: ${String(
+          (err as Error)?.message ?? err,
+        )}`,
+      );
+    }
+  }
+
+  await dispatchBuffered();
 }
 
 // Napcat channel plugin implementation
@@ -269,7 +298,7 @@ export const napcatPlugin: ChannelPlugin<any> = {
       if (!target) {
         throw new Error("napcat target is required");
       }
-      const message = sanitizeUtf8(text?.trim() ?? "");
+      const message = text?.trim() ?? "";
       if (!message) {
         throw new Error("napcat message text is empty");
       }
@@ -290,7 +319,7 @@ export const napcatPlugin: ChannelPlugin<any> = {
       if (!target) {
         throw new Error("napcat target is required");
       }
-      const payloadText = sanitizeUtf8([text, mediaUrl].filter(Boolean).join("\n").trim());
+      const payloadText = [text, mediaUrl].filter(Boolean).join("\n").trim();
       if (!payloadText) {
         throw new Error("napcat message text is empty");
       }
