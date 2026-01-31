@@ -181,23 +181,28 @@ async function handleNapcatInbound(params: {
     accountId: route.accountId,
   });
 
-  await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+  const dispatchReply =
+    runtime.channel.reply.createReplyDispatcherWithTyping ??
+    runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher;
+
+  await dispatchReply({
     ctx: ctxPayload,
     cfg: params.cfg,
     dispatcherOptions: {
-      deliver: async (payload) => {
+      deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
         const text = formatNapcatPayloadText(payload, tableMode);
         if (!text) return;
         await sendNapcatMessage({ chatIdRaw, isGroup, text });
         params.setStatus({ accountId: route.accountId, lastOutboundAt: Date.now() });
       },
-      onError: (err, info) => {
+      onError: (err: Error, info: { kind: string }) => {
         params.log?.error?.(
           `[${route.accountId}] napcat ${info.kind} reply failed: ${String(err)}`,
         );
       },
+      // Prefer streaming: when supported, createReplyDispatcherWithTyping will emit as soon as blocks are ready.
     },
-  });
+  } as any);
 }
 
 // Napcat channel plugin implementation
