@@ -5,5 +5,8 @@
   "description": "Openclaw Napcat channel plugin (stdin/stdout RPC bridge)",
   "openclaw": {
     "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
   }
 }
