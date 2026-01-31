@@ -6,7 +6,5 @@
   "openclaw": {
     "extensions": ["./index.ts"]
   },
-  "dependencies": {
-    "zod": "^4.3.6"
-  }
+  "dependencies": {}
 }
