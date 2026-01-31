@@ -54,23 +54,15 @@ def _load_dotenv_if_present() -> None:
 def _configure_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     fmt = "%(asctime)s [%(levelname)s] %(message)s"
-    if verbose:
-        # Verbose: keep stderr output for interactive debugging.
-        logging.basicConfig(level=level, format=fmt, handlers=[logging.StreamHandler()], force=True)
-        return
+    log_path = Path.cwd() / "nap-msg.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
 
-    # Non-verbose: write to nap-msg.log in the current working directory (avoid stdout/stderr).
-    raw_path = os.getenv("NAP_MSG_LOG") or str(Path.cwd() / "nap-msg.log")
-    log_path = Path(raw_path)
-    try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handler = logging.FileHandler(log_path, encoding="utf-8")
-        logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
-        logging.getLogger(__name__).info("logging to %s", log_path)
-    except OSError:
-        # Fallback: if file handler fails, keep stderr logging (still avoids stdout).
-        logging.basicConfig(level=level, format=fmt, handlers=[logging.StreamHandler()], force=True)
-        logging.getLogger(__name__).warning("log file unavailable, fallback to stderr (path=%s)", log_path)
+    handlers = [file_handler]
+    if verbose:
+        handlers.append(logging.StreamHandler())
+
+    logging.basicConfig(level=level, format=fmt, handlers=handlers, force=True)
 
 
 def _add_segment_args(parser: argparse.ArgumentParser) -> None:
