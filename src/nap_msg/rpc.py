@@ -48,9 +48,11 @@ def _parse_target_from_params(params: dict) -> tuple[str | None, bool | None]:
 
 
 class RpcServer:
-    def __init__(self) -> None:
+    def __init__(self, default_url: Optional[str] = None, default_timeout: Optional[float] = None) -> None:
         self._watch_tasks: dict[int, asyncio.Task] = {}
         self._next_subscription_id = 1
+        self._default_url = default_url
+        self._default_timeout = default_timeout
 
     async def serve(self) -> None:
         """Run a JSON-RPC loop over stdin/stdout (one JSON object per line)."""
@@ -129,7 +131,7 @@ class RpcServer:
         )
 
     async def _handle_subscribe(self, params: dict, req_id: Any) -> None:
-        url = params.get("napcat_url") or os.getenv("NAPCAT_URL")
+        url = params.get("napcat_url") or self._default_url or os.getenv("NAPCAT_URL")
         if not url:
             self._write_error(req_id, code=-32000, message="NAPCAT_URL is required")
             return
@@ -174,8 +176,8 @@ class RpcServer:
         channel = params.get("channel") or params.get("type")
         group_id = params.get("group_id")
         user_id = params.get("user_id")
-        timeout = params.get("timeout")
-        client = NapcatRelayClient(url=params.get("napcat_url"), timeout=timeout)
+        timeout = params.get("timeout") or self._default_timeout
+        client = NapcatRelayClient(url=params.get("napcat_url") or self._default_url, timeout=timeout)
 
         if not channel:
             if group_id:
@@ -254,8 +256,8 @@ def _asr_enabled() -> bool:
     return bool(os.getenv("TENCENT_SECRET_ID", "").strip() and os.getenv("TENCENT_SECRET_KEY", "").strip())
 
 
-def run_rpc_server() -> int:
-    server = RpcServer()
+def run_rpc_server(default_url: Optional[str] = None, default_timeout: Optional[float] = None) -> int:
+    server = RpcServer(default_url=default_url, default_timeout=default_timeout)
     try:
         asyncio.run(server.serve())
         return 0

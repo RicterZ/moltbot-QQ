@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "send-group":
         return _run_send_group(args)
     if args.command == "rpc":
-        return run_rpc_server()
+        return run_rpc_server(default_url=args.napcat_url, default_timeout=args.timeout)
 
     parser.error(f"Unknown command {args.command}")
     return 2
