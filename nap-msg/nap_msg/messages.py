@@ -22,6 +22,7 @@ class CommandType(str, Enum):
     SEND_GROUP_MSG = "send_group_msg"
     SEND_GROUP_FORWARD_MSG = "send_group_forward_msg"
     SEND_PRIVATE_MSG = "send_private_msg"
+    SEND_PRIVATE_FORWARD_MSG = "send_private_forward_msg"
 
 
 class Command:

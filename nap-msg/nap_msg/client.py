@@ -81,6 +81,14 @@ async def send_private_message(
     return await client.send_command(command)
 
 
+async def send_private_forward_message(
+    client: NapcatRelayClient, user_id: str, nodes: List[ForwardNode]
+) -> Dict[str, Any]:
+    params = {"user_id": str(user_id), "messages": [node.as_dict() for node in nodes]}
+    command = Command(CommandType.SEND_PRIVATE_FORWARD_MSG, params)
+    return await client.send_command(command)
+
+
 def _parse_timeout(raw: str) -> float:
     if not raw:
         return DEFAULT_TIMEOUT

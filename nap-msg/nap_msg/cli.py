@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .client import DEFAULT_TIMEOUT, NapcatRelayClient, send_group_forward_message, send_group_message, send_private_message
+from .client import DEFAULT_TIMEOUT, NapcatRelayClient, send_group_forward_message, send_group_message, send_private_forward_message, send_private_message
 from .messages import FileMessage, ForwardNode, ImageMessage, ReplyMessage, TextMessage, VideoMessage
 from .video import download_and_transcode
 
@@ -111,6 +111,17 @@ def _build_parser() -> argparse.ArgumentParser:
     send_private = subparsers.add_parser("send", help="Send a private message")
     send_private.add_argument("user_id", help="Target QQ user id")
     _add_segment_args(send_private)
+    send_private.add_argument(
+        "--type",
+        choices=["normal", "forward"],
+        default="normal",
+        help="Send as normal message or as a forward message.",
+    )
+    send_private.add_argument(
+        "--forward",
+        action="store_true",
+        help="Shortcut for --type forward.",
+    )
 
     send_group = subparsers.add_parser("send-group", help="Send a group message")
     send_group.add_argument("group_id", help="Target QQ group id")
@@ -243,17 +254,19 @@ def _run_send_private(args: argparse.Namespace) -> int:
     if not parts and not errors:
         return 2
 
+    is_forward = args.forward or args.type == "forward"
     client = NapcatRelayClient(url=args.napcat_url, timeout=args.timeout)
 
-    if errors:
-        error_text = _compose_error_text(errors, raw_segments)
-        if parts:
-            parts = parts + [TextMessage(error_text)]
-        else:
-            parts = [TextMessage(error_text)]
-
     try:
-        response = asyncio.run(send_private_message(client, args.user_id, _serialize_parts(parts)))
+        if errors:
+            content = _build_error_forward_content(parts, errors, raw_segments)
+            nodes = _build_forward_nodes(content)
+            response = asyncio.run(send_private_forward_message(client, args.user_id, nodes))
+        elif is_forward:
+            nodes = _build_forward_nodes(parts)
+            response = asyncio.run(send_private_forward_message(client, args.user_id, nodes))
+        else:
+            response = asyncio.run(send_private_message(client, args.user_id, _serialize_parts(parts)))
     except Exception as exc:  # noqa: BLE001
         logging.exception("Failed to send message: %s", exc)
         return 1
