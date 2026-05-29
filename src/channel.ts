@@ -27,6 +27,16 @@ type NapcatInboundMessage = {
 };
 
 const activeClients = new Map<string, NapcatWsClient>();
+const sessionQueues = new Map<string, Promise<void>>();
+
+function enqueueForSession(key: string, fn: () => Promise<void>): void {
+  const prev = sessionQueues.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  sessionQueues.set(key, next);
+  next.finally(() => {
+    if (sessionQueues.get(key) === next) sessionQueues.delete(key);
+  });
+}
 
 function inferMediaKind(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -281,13 +291,18 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
       onMessage: (msg) => {
         const client = activeClients.get(account.accountId);
         if (!client) return;
-        void handleInboundNapcatMessage({
-          message: msg,
-          account,
-          cfg,
-          client,
-          ctx,
-        }).catch((err) => ctx.log?.error(`napcat inbound failed: ${String(err)}`));
+        const queueKey = msg.isGroup
+          ? `${account.accountId}:group:${msg.chatId}`
+          : `${account.accountId}:user:${msg.sender}`;
+        enqueueForSession(queueKey, () =>
+          handleInboundNapcatMessage({
+            message: msg,
+            account,
+            cfg,
+            client,
+            ctx,
+          }).catch((err) => ctx.log?.error(`napcat inbound failed: ${String(err)}`))
+        );
       },
     });
   } catch (err) {
