@@ -60,6 +60,8 @@ export type WatchForeverOptions = {
   ignorePrefixes?: string[];
   /** ASR config — when provided, voice messages are transcribed via Tencent Cloud */
   asr?: NapcatAsrConfig;
+  /** Absolute base directory for downloaded media (e.g. `<workspace>/data/tmp/napcat`). */
+  mediaDirRoot: string;
   /** Called for each well-formed inbound message */
   onMessage: (msg: WatchedMessage) => void | Promise<void>;
   /**
@@ -223,6 +225,7 @@ async function extractMessageContent(
   event: NapcatMessageEvent,
   client: NapcatWsClient,
   asr: NapcatAsrConfig | undefined,
+  mediaDirRoot: string,
   log: NapcatLogger,
 ): Promise<{
   textContent: string | null;
@@ -300,6 +303,7 @@ async function extractMessageContent(
       const localPath = await downloadMedia(
         url,
         segType as "image" | "video" | "file",
+        mediaDirRoot,
         log,
       );
       if (localPath) {
@@ -386,6 +390,7 @@ export async function watchForever(opts: WatchForeverOptions): Promise<void> {
     fromUser,
     ignorePrefixes = ["/"],
     asr,
+    mediaDirRoot,
     onMessage,
     onConnect,
     abortSignal,
@@ -445,6 +450,7 @@ export async function watchForever(opts: WatchForeverOptions): Promise<void> {
         event,
         wsClient,
         asr,
+        mediaDirRoot,
         log,
       );
 

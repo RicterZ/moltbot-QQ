@@ -5,5 +5,124 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "channelConfigs": {
+    "napcat": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "url": { "type": "string" },
+          "timeoutMs": { "type": "number" },
+          "ignorePrefixes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "fromGroup": {
+            "oneOf": [
+              { "type": ["string", "number"] },
+              { "type": "array", "items": { "type": ["string", "number"] } }
+            ]
+          },
+          "fromUser": {
+            "oneOf": [
+              { "type": ["string", "number"] },
+              { "type": "array", "items": { "type": ["string", "number"] } }
+            ]
+          },
+          "blockStreaming": { "type": "boolean" },
+          "blockStreamingCoalesce": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "minChars": { "type": "number" },
+              "idleMs": { "type": "number" }
+            }
+          },
+          "textSplit": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "minDelayMs": { "type": "number" },
+              "maxDelayMs": { "type": "number" }
+            }
+          },
+          "asr": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "secretId": { "type": "string" },
+              "secretKey": { "type": "string" },
+              "region": { "type": "string" },
+              "engine": { "type": "string" }
+            },
+            "required": ["secretId", "secretKey"]
+          },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "url": { "type": "string" },
+                "timeoutMs": { "type": "number" },
+                "ignorePrefixes": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "fromGroup": {
+                  "oneOf": [
+                    { "type": ["string", "number"] },
+                    { "type": "array", "items": { "type": ["string", "number"] } }
+                  ]
+                },
+                "fromUser": {
+                  "oneOf": [
+                    { "type": ["string", "number"] },
+                    { "type": "array", "items": { "type": ["string", "number"] } }
+                  ]
+                },
+                "blockStreaming": { "type": "boolean" },
+                "blockStreamingCoalesce": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "minChars": { "type": "number" },
+                    "idleMs": { "type": "number" }
+                  }
+                },
+                "textSplit": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "minDelayMs": { "type": "number" },
+                    "maxDelayMs": { "type": "number" }
+                  }
+                },
+                "asr": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretId": { "type": "string" },
+                    "secretKey": { "type": "string" },
+                    "region": { "type": "string" },
+                    "engine": { "type": "string" }
+                  },
+                  "required": ["secretId", "secretKey"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "label": "Napcat (QQ)",
+      "description": "QQ messaging via Napcat WebSocket (OneBot v11)"
+    }
   }
 }

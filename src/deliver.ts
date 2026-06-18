@@ -4,7 +4,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import { readFile } from "node:fs/promises";
 
 import type { NapcatWsClient } from "./ws-client.js";
-import type { ResolvedNapcatAccount } from "./types.js";
+import type { ResolvedNapcatAccount, ResolvedNapcatTextSplitConfig } from "./types.js";
 
 export type NapcatTarget = {
   channel: "group" | "private";
@@ -30,6 +30,26 @@ function inferMediaType(url: string): "image" | "video" | "file" {
   if (lower.match(/\.(png|jpe?g|gif|webp|avif)(\?|$)/)) return "image";
   if (lower.match(/\.(mp4|mov|mkv|webm)(\?|$)/)) return "video";
   return "file";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomDelayMs(config: ResolvedNapcatTextSplitConfig): number {
+  if (config.maxDelayMs <= config.minDelayMs) return config.minDelayMs;
+  return Math.floor(
+    config.minDelayMs + Math.random() * (config.maxDelayMs - config.minDelayMs + 1),
+  );
+}
+
+function splitTextSections(text: string, config: ResolvedNapcatTextSplitConfig): string[] {
+  if (!text.trim()) return [];
+  if (!config.enabled) return [text];
+  return text
+    .split(/\r?\n[ \t]*\r?\n(?:[ \t]*\r?\n)*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -76,6 +96,43 @@ async function sendNapcatMessage(opts: {
   await opts.client.request(action, params, { timeoutMs: opts.timeoutMs });
 }
 
+async function sendTextSections(opts: {
+  sections: string[];
+  includeReply: boolean;
+  replyToId?: string;
+  target: NapcatTarget;
+  client: NapcatWsClient;
+  account: ResolvedNapcatAccount;
+  chunkText: (text: string) => string[];
+}): Promise<boolean> {
+  let replySent = false;
+  for (let sectionIndex = 0; sectionIndex < opts.sections.length; sectionIndex += 1) {
+    if (sectionIndex > 0) {
+      await sleep(randomDelayMs(opts.account.textSplit));
+    }
+    const section = opts.sections[sectionIndex] ?? "";
+    const chunks = opts.chunkText(section);
+    for (const chunk of chunks.length > 0 ? chunks : [section]) {
+      const segments: NapcatSegment[] = [];
+      if (opts.includeReply && !replySent && opts.replyToId) {
+        segments.push({ type: "reply", data: { id: opts.replyToId } });
+        replySent = true;
+      }
+      if (chunk.trim()) {
+        segments.push({ type: "text", data: { text: chunk } });
+      }
+      await sendNapcatMessage({
+        client: opts.client,
+        account: opts.account,
+        target: opts.target,
+        segments,
+        timeoutMs: opts.account.timeoutMs,
+      });
+    }
+  }
+  return replySent;
+}
+
 export async function deliverNapcatReplies(params: DeliverNapcatParams): Promise<void> {
   const { replies, target, client, account, cfg, runtime } = params;
   const tableMode = runtime.channel.text.resolveMarkdownTableMode({
@@ -95,22 +152,17 @@ export async function deliverNapcatReplies(params: DeliverNapcatParams): Promise
     const mediaList = reply.mediaUrls ?? (reply.mediaUrl ? [reply.mediaUrl] : []);
     const rawText = reply.text ?? "";
     const convertedText = runtime.channel.text.convertMarkdownTables(rawText, tableMode);
-    const chunks = runtime.channel.text.chunkMarkdownTextWithMode(
-      convertedText,
-      chunkLimit,
-      chunkMode,
-    );
+    const textSections = splitTextSections(convertedText, account.textSplit);
+    const chunkText = (text: string) =>
+      runtime.channel.text.chunkMarkdownTextWithMode(text, chunkLimit, chunkMode);
     let includeReply = Boolean(reply.replyToId);
 
     if (mediaList.length === 0) {
-      for (const chunk of chunks.length > 0 ? chunks : [""]) {
+      if (textSections.length === 0) {
         const segments: NapcatSegment[] = [];
         if (includeReply && reply.replyToId) {
           segments.push({ type: "reply", data: { id: reply.replyToId } });
           includeReply = false;
-        }
-        if (chunk.trim()) {
-          segments.push({ type: "text", data: { text: chunk } });
         }
         await sendNapcatMessage({
           client,
@@ -119,8 +171,36 @@ export async function deliverNapcatReplies(params: DeliverNapcatParams): Promise
           segments,
           timeoutMs: account.timeoutMs,
         });
+      } else {
+        await sendTextSections({
+          sections: textSections,
+          includeReply,
+          replyToId: reply.replyToId,
+          target,
+          client,
+          account,
+          chunkText,
+        });
       }
       continue;
+    }
+
+    const leadingTextSections = textSections.length > 1 ? textSections.slice(0, -1) : [];
+    const mediaText = textSections.length > 1
+      ? textSections[textSections.length - 1]
+      : convertedText;
+    if (leadingTextSections.length > 0) {
+      const replySent = await sendTextSections({
+        sections: leadingTextSections,
+        includeReply,
+        replyToId: reply.replyToId,
+        target,
+        client,
+        account,
+        chunkText,
+      });
+      if (replySent) includeReply = false;
+      await sleep(randomDelayMs(account.textSplit));
     }
 
     let first = true;
@@ -130,8 +210,8 @@ export async function deliverNapcatReplies(params: DeliverNapcatParams): Promise
         segments.push({ type: "reply", data: { id: reply.replyToId } });
         includeReply = false;
       }
-      if (first && convertedText.trim()) {
-        segments.push({ type: "text", data: { text: convertedText } });
+      if (first && mediaText.trim()) {
+        segments.push({ type: "text", data: { text: mediaText } });
       }
       first = false;
       const mediaType = inferMediaType(url);

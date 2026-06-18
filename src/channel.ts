@@ -4,6 +4,8 @@ import type { ChannelGatewayContext, ChannelStatusIssue } from "openclaw/plugin-
 import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
 
+import { join } from "node:path";
+
 import { napcatChannelConfigSchema } from "./config-schema.js";
 import { deliverNapcatReplies, type NapcatTarget } from "./deliver.js";
 import { getNapcatRuntime } from "./runtime.js";
@@ -269,6 +271,9 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
   const abort = ctx.abortSignal;
 
   try {
+    const workspaceDir = runtime.agent.resolveAgentWorkspaceDir(cfg);
+    const mediaDirRoot = join(workspaceDir, "data", "tmp", "napcat");
+
     await watchForever({
       url: account.napcatUrl,
       timeoutMs: account.timeoutMs,
@@ -276,6 +281,7 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
       fromUser: account.fromUser,
       ignorePrefixes: account.ignorePrefixes,
       asr: account.asr,
+      mediaDirRoot,
       abortSignal: abort ?? undefined,
       log: ctx.log,
       onConnect: (client) => {

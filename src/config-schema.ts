@@ -44,6 +44,15 @@ const accountShape = {
       idleMs: { type: "number" },
     },
   },
+  textSplit: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      enabled: { type: "boolean" },
+      minDelayMs: { type: "number" },
+      maxDelayMs: { type: "number" },
+    },
+  },
   asr: asrSchema,
 } as const;
 

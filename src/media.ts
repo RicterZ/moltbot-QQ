@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { cwd } from "node:process";
 import { type NapcatLogger } from "./logger.js";
 
 /**
@@ -89,13 +88,16 @@ function chooseDownloadSuffix(
 
 /**
  * Download a media URL to the local filesystem.
- * Files are stored under `<cwd>/napcat/<mediaType>/<YYYY-MM>/<uuid><ext>`.
+ * Files are stored under `<mediaDirRoot>/<mediaType>/<YYYY-MM>/<uuid><ext>`.
  *
+ * @param mediaDirRoot – Absolute base directory for media storage
+ *   (e.g. `<workspaceDir>/data/tmp/napcat`).
  * @returns Absolute path to the saved file, or null on failure.
  */
 export async function downloadMedia(
   url: string,
   mediaType: "image" | "video" | "file",
+  mediaDirRoot: string,
   log?: NapcatLogger,
 ): Promise<string | null> {
   let parsedUrl: URL;
@@ -112,7 +114,7 @@ export async function downloadMedia(
   }
 
   const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-  const baseDir = join(cwd(), "napcat", mediaType, month);
+  const baseDir = join(mediaDirRoot, mediaType, month);
 
   try {
     await mkdir(baseDir, { recursive: true });

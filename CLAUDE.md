@@ -137,12 +137,14 @@ AI 流式输出时，积累到 80 字符或空闲 250ms 才合并发送一条 QQ
 
 ## 媒体存储路径
 
-入站媒体下载到（相对 OpenClaw 工作目录）：
+入站媒体下载到 agent workspace 的 `data/tmp/napcat/` 下：
 ```
-napcat/image/<YYYY-MM>/<hash>.<ext>
-napcat/video/<YYYY-MM>/<hash>.<ext>
-napcat/file/<YYYY-MM>/<hash>.<ext>
+<workspaceDir>/data/tmp/napcat/image/<YYYY-MM>/<hash>.<ext>
+<workspaceDir>/data/tmp/napcat/video/<YYYY-MM>/<hash>.<ext>
+<workspaceDir>/data/tmp/napcat/file/<YYYY-MM>/<hash>.<ext>
 ```
+
+`workspaceDir` 通过 `runtime.agent.resolveAgentWorkspaceDir(cfg)` 获取。
 
 ## 配置速查
 

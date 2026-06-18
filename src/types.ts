@@ -7,6 +7,18 @@ export type BlockStreamingCoalesceConfig = {
   idleMs?: number;
 };
 
+export type NapcatTextSplitConfig = {
+  enabled?: boolean;
+  minDelayMs?: number;
+  maxDelayMs?: number;
+};
+
+export type ResolvedNapcatTextSplitConfig = {
+  enabled: boolean;
+  minDelayMs: number;
+  maxDelayMs: number;
+};
+
 export type NapcatAsrConfig = {
   secretId: string;
   secretKey: string;
@@ -24,6 +36,7 @@ export type NapcatAccountConfig = {
   fromUser?: string | number | (string | number)[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  textSplit?: NapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
 
@@ -43,6 +56,7 @@ export type ResolvedNapcatAccount = {
   fromUser?: string[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  textSplit: ResolvedNapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
 
@@ -69,6 +83,23 @@ function normalizeAsr(asr?: NapcatAsrConfig): NapcatAsrConfig | undefined {
     secretKey,
     region: asr.region?.trim() || undefined,
     engine: asr.engine?.trim() || undefined,
+  };
+}
+
+function normalizeDelayMs(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
+function normalizeTextSplit(textSplit?: NapcatTextSplitConfig): ResolvedNapcatTextSplitConfig {
+  const minDelayMs = normalizeDelayMs(textSplit?.minDelayMs, 1000);
+  const maxDelayMs = normalizeDelayMs(textSplit?.maxDelayMs, 3000);
+  return {
+    enabled: textSplit?.enabled ?? true,
+    minDelayMs: Math.min(minDelayMs, maxDelayMs),
+    maxDelayMs: Math.max(minDelayMs, maxDelayMs),
   };
 }
 
@@ -108,6 +139,7 @@ export function resolveNapcatAccount(params: {
     fromUser: normalizeIds(merged.fromUser),
     blockStreaming: merged.blockStreaming,
     blockStreamingCoalesce: merged.blockStreamingCoalesce,
+    textSplit: normalizeTextSplit(merged.textSplit),
     asr: normalizeAsr(merged.asr),
   };
 }
