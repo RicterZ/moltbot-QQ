@@ -161,6 +161,7 @@ Voice messages are transcribed automatically when `asr` is configured. Powered b
 |---|---|---|---|
 | `blockStreaming` | boolean | `false` | Disable streaming replies (send only when complete) |
 | `blockStreamingCoalesce` | object | `{minChars:80,idleMs:250}` | Coalescing config for streaming chunks |
+| `interruptOnNewMessage` | boolean | `true` | Abort the in-flight reply for the same QQ conversation when a newer message arrives |
 | `textSplit` | object | `{enabled:true,minDelayMs:1000,maxDelayMs:3000}` | Split outbound text on blank lines and wait between split messages |
 
 ### Multi-account

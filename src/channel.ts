@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import { napcatChannelConfigSchema } from "./config-schema.js";
 import { deliverNapcatReplies, type NapcatTarget } from "./deliver.js";
+import { createLogger } from "./logger.js";
 import { getNapcatRuntime } from "./runtime.js";
 import { NapcatWsClient } from "./ws-client.js";
 import { watchForever } from "./watcher.js";
@@ -30,6 +31,10 @@ type NapcatInboundMessage = {
 
 const activeClients = new Map<string, NapcatWsClient>();
 const sessionQueues = new Map<string, Promise<void>>();
+const activeSessionRuns = new Map<
+  string,
+  { controller: AbortController; promise: Promise<void> }
+>();
 
 function enqueueForSession(key: string, fn: () => Promise<void>): void {
   const prev = sessionQueues.get(key) ?? Promise.resolve();
@@ -38,6 +43,80 @@ function enqueueForSession(key: string, fn: () => Promise<void>): void {
   next.finally(() => {
     if (sessionQueues.get(key) === next) sessionQueues.delete(key);
   });
+}
+
+function isAbortLikeError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+async function waitForDispatcherIdle(
+  dispatcher: { waitForIdle: () => Promise<unknown> },
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  if (!abortSignal) {
+    await dispatcher.waitForIdle();
+    return;
+  }
+  if (abortSignal.aborted) return;
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      abortSignal.removeEventListener("abort", finish);
+      resolve();
+    };
+    abortSignal.addEventListener("abort", finish, { once: true });
+    dispatcher.waitForIdle().then(finish, (err) => {
+      if (settled) return;
+      settled = true;
+      abortSignal.removeEventListener("abort", finish);
+      reject(err);
+    });
+  });
+}
+
+function startInterruptibleSession(params: {
+  key: string;
+  parentAbortSignal?: AbortSignal;
+  run: (abortSignal: AbortSignal) => Promise<void>;
+  onError: (err: unknown) => void;
+}): void {
+  const previous = activeSessionRuns.get(params.key);
+  if (previous && !previous.controller.signal.aborted) {
+    previous.controller.abort(new Error("Superseded by newer Napcat message"));
+  }
+
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(new Error("Napcat account stopped"));
+  if (params.parentAbortSignal?.aborted) {
+    abortFromParent();
+  } else {
+    params.parentAbortSignal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+
+  const promise = params
+    .run(controller.signal)
+    .catch((err) => {
+      if (!controller.signal.aborted && !isAbortLikeError(err)) params.onError(err);
+    })
+    .finally(() => {
+      params.parentAbortSignal?.removeEventListener("abort", abortFromParent);
+      if (activeSessionRuns.get(params.key)?.controller === controller) {
+        activeSessionRuns.delete(params.key);
+      }
+    });
+  const runRecord = { controller, promise };
+  activeSessionRuns.set(params.key, runRecord);
+}
+
+function abortActiveSessionRunsForAccount(accountId: string): void {
+  const prefix = `${accountId}:`;
+  for (const [key, run] of activeSessionRuns) {
+    if (key.startsWith(prefix) && !run.controller.signal.aborted) {
+      run.controller.abort(new Error("Napcat account stopped"));
+    }
+  }
 }
 
 function inferMediaKind(value: string | undefined): string | undefined {
@@ -119,8 +198,10 @@ async function handleInboundNapcatMessage(params: {
   cfg: OpenClawConfig;
   client: NapcatWsClient;
   ctx: ChannelGatewayContext<ResolvedNapcatAccount>;
+  abortSignal?: AbortSignal;
 }) {
-  const { message, account, cfg, client, ctx } = params;
+  const { message, account, cfg, client, ctx, abortSignal } = params;
+  if (abortSignal?.aborted) return;
   const runtime = getNapcatRuntime();
   const target = buildInboundTarget(message);
   if (!target) return;
@@ -135,6 +216,7 @@ async function handleInboundNapcatMessage(params: {
   ].filter(Boolean);
 
   if (!text && attachments.length === 0) return;
+  if (abortSignal?.aborted) return;
 
   const mediaKind = inferMediaKind(attachments[0]);
   const mediaPlaceholder = mediaKind ? `<media:${mediaKind}>` : "<media:attachment>";
@@ -204,13 +286,16 @@ async function handleInboundNapcatMessage(params: {
   });
 
   const prefixContext = createReplyPrefixContext({ cfg, agentId: route.agentId });
+  const deliverLog = createLogger("deliver", ctx.log);
 
   const { dispatcher, replyOptions, markDispatchIdle } =
     runtime.channel.reply.createReplyDispatcherWithTyping({
       responsePrefix: prefixContext.responsePrefix,
       responsePrefixContextProvider: prefixContext.responsePrefixContextProvider,
       humanDelay: runtime.channel.reply.resolveHumanDelayConfig(cfg, route.agentId),
+      beforeDeliver: (payload) => (abortSignal?.aborted ? null : payload),
       deliver: async (payload: ReplyPayload) => {
+        if (abortSignal?.aborted) return;
         const parsedTarget = normalizeNapcatTarget(ctxPayload.To ?? to) ?? target;
         await deliverNapcatReplies({
           replies: [payload],
@@ -219,7 +304,11 @@ async function handleInboundNapcatMessage(params: {
           account,
           cfg,
           runtime,
+          abortSignal,
+          log: deliverLog,
+          waitForSend: false,
         });
+        if (abortSignal?.aborted) return;
         ctx.setStatus({
           ...ctx.getStatus(),
           accountId: account.accountId,
@@ -236,19 +325,22 @@ async function handleInboundNapcatMessage(params: {
   const disableBlockStreaming =
     typeof account.blockStreaming === "boolean" ? account.blockStreaming : false;
 
-  await runtime.channel.reply.dispatchReplyFromConfig({
-    ctx: ctxPayload,
-    cfg,
-    dispatcher,
-    replyOptions: {
-      ...replyOptions,
-      disableBlockStreaming,
-      onModelSelected: prefixContext.onModelSelected,
-    },
-  });
-
-  markDispatchIdle();
-  await dispatcher.waitForIdle();
+  try {
+    await runtime.channel.reply.dispatchReplyFromConfig({
+      ctx: ctxPayload,
+      cfg,
+      dispatcher,
+      replyOptions: {
+        ...replyOptions,
+        abortSignal,
+        disableBlockStreaming,
+        onModelSelected: prefixContext.onModelSelected,
+      },
+    });
+  } finally {
+    markDispatchIdle();
+    await waitForDispatcherIdle(dispatcher, abortSignal);
+  }
 }
 
 async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccount>) {
@@ -300,15 +392,29 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
         const queueKey = msg.isGroup
           ? `${account.accountId}:group:${msg.chatId}`
           : `${account.accountId}:user:${msg.sender}`;
-        enqueueForSession(queueKey, () =>
+        const run = (abortSignal?: AbortSignal) =>
           handleInboundNapcatMessage({
             message: msg,
             account,
             cfg,
             client,
             ctx,
-          }).catch((err) => ctx.log?.error(`napcat inbound failed: ${String(err)}`))
-        );
+            abortSignal,
+          });
+        if (account.interruptOnNewMessage) {
+          startInterruptibleSession({
+            key: queueKey,
+            parentAbortSignal: abort ?? undefined,
+            run: (abortSignal) => run(abortSignal),
+            onError: (err) => ctx.log?.error(`napcat inbound failed: ${String(err)}`),
+          });
+        } else {
+          enqueueForSession(queueKey, () =>
+            run(abort ?? undefined).catch((err) =>
+              ctx.log?.error(`napcat inbound failed: ${String(err)}`),
+            ),
+          );
+        }
       },
     });
   } catch (err) {
@@ -324,6 +430,7 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
       throw err;
     }
   } finally {
+    abortActiveSessionRunsForAccount(account.accountId);
     activeClients.delete(account.accountId);
     ctx.setStatus({
       ...ctx.getStatus(),
@@ -376,6 +483,11 @@ export const napcatPlugin: ChannelPlugin<ResolvedNapcatAccount> = {
       return parsed.channel === "group"
         ? `napcat:group:${parsed.id}`
         : `napcat:${parsed.id}`;
+    },
+    inferTargetChatType: ({ to }) => {
+      const parsed = normalizeNapcatTarget(to);
+      if (!parsed) return undefined;
+      return parsed.channel === "group" ? "group" : "direct";
     },
     targetResolver: {
       looksLikeId: (id) => Boolean(normalizeNapcatTarget(id)),

@@ -36,6 +36,7 @@ export type NapcatAccountConfig = {
   fromUser?: string | number | (string | number)[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  interruptOnNewMessage?: boolean;
   textSplit?: NapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
@@ -56,6 +57,7 @@ export type ResolvedNapcatAccount = {
   fromUser?: string[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  interruptOnNewMessage: boolean;
   textSplit: ResolvedNapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
@@ -139,6 +141,7 @@ export function resolveNapcatAccount(params: {
     fromUser: normalizeIds(merged.fromUser),
     blockStreaming: merged.blockStreaming,
     blockStreamingCoalesce: merged.blockStreamingCoalesce,
+    interruptOnNewMessage: merged.interruptOnNewMessage ?? false,
     textSplit: normalizeTextSplit(merged.textSplit),
     asr: normalizeAsr(merged.asr),
   };

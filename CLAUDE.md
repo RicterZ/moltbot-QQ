@@ -112,6 +112,9 @@ Segment 参数可混合、可重复，发送顺序与命令行顺序一致。
 ### 流式回复 Coalescing
 AI 流式输出时，积累到 80 字符或空闲 250ms 才合并发送一条 QQ 消息，避免消息碎片化刷屏。参数：`blockStreamingCoalesce: {minChars: 80, idleMs: 250}`。
 
+### 同会话新消息中断
+默认 `interruptOnNewMessage: false`。同一个 QQ 会话（账号+群/用户）收到新消息时按 FIFO 排队，后一条等前一条处理完成。设为 `true` 时会 abort 正在处理的上一条消息，并立刻把最新消息提交给 OpenClaw —— 但 OpenClaw 的 codex app-server turn 在 abort 后不能立刻释放 session write lock（模型流/工具调用响应需要时间），新消息进来后 `dispatchReplyFromConfig` 的 `admitReplyTurn` 等不到锁会触发 60s `SessionWriteLockTimeoutError`，导致新消息被丢弃。**除非上游修了 abort 后的 lock 释放时序，否则不要打开此选项。**
+
 ### 多账号配置合并
 根级 `channels.napcat` 为默认值，`accounts.<id>` 中的字段 **浅覆盖**根级。注意：`asr` 对象是**整体替换**，不做深度 merge。
 
@@ -158,6 +161,7 @@ AI 流式输出时，积累到 80 字符或空闲 250ms 才合并发送一条 QQ
 | `ignorePrefixes` | string[] | 忽略前缀（默认 `["/"]`） |
 | `asr.secretId/secretKey` | string | 腾讯云语音识别密钥 |
 | `blockStreaming` | boolean | 禁用流式回复 |
+| `interruptOnNewMessage` | boolean | 同会话新消息中断旧处理（默认 `false`，见下） |
 
 **重要**：OpenClaw 群聊默认 delivery mode 为 `message_tool_only`（AI 需主动调 message tool 才发送）。要让群聊自动回复，必须在 OpenClaw 配置中设置：
 ```json

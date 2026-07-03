@@ -41,6 +41,7 @@
               "idleMs": { "type": "number" }
             }
           },
+          "interruptOnNewMessage": { "type": "boolean" },
           "textSplit": {
             "type": "object",
             "additionalProperties": false,
@@ -96,6 +97,7 @@
                     "idleMs": { "type": "number" }
                   }
                 },
+                "interruptOnNewMessage": { "type": "boolean" },
                 "textSplit": {
                   "type": "object",
                   "additionalProperties": false,
