@@ -5,7 +5,7 @@ description = "CLI tool for sending messages via Napcat WebSocket"
 authors = [
     {name = "Ricter Z",email = "ricterzheng@gmail.com"}
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "websockets>=12",
     "yt-dlp>=2024.4.9",

@@ -29,6 +29,12 @@ type NapcatInboundMessage = {
   files?: string[] | null;
 };
 
+type NapcatInboundRoute = {
+  agentId: string;
+  accountId: string;
+  sessionKey: string;
+};
+
 const activeClients = new Map<string, NapcatWsClient>();
 const sessionQueues = new Map<string, Promise<void>>();
 const activeSessionRuns = new Map<
@@ -192,12 +198,32 @@ function buildInboundTarget(message: NapcatInboundMessage): NapcatTarget | null 
   };
 }
 
+function resolveNapcatInboundRoute(params: {
+  message: NapcatInboundMessage;
+  account: ResolvedNapcatAccount;
+  cfg: OpenClawConfig;
+}): NapcatInboundRoute {
+  const runtime = getNapcatRuntime();
+  const senderId = params.message.sender != null ? String(params.message.sender).trim() : "";
+  const chatId = params.message.chatId != null ? String(params.message.chatId).trim() : undefined;
+  return runtime.channel.routing.resolveAgentRoute({
+    cfg: params.cfg,
+    channel: "napcat",
+    accountId: params.account.accountId,
+    peer: {
+      kind: params.message.isGroup ? "group" : "direct",
+      id: params.message.isGroup ? chatId ?? "unknown" : senderId || "unknown",
+    },
+  });
+}
+
 async function handleInboundNapcatMessage(params: {
   message: NapcatInboundMessage;
   account: ResolvedNapcatAccount;
   cfg: OpenClawConfig;
   client: NapcatWsClient;
   ctx: ChannelGatewayContext<ResolvedNapcatAccount>;
+  route?: NapcatInboundRoute;
   abortSignal?: AbortSignal;
 }) {
   const { message, account, cfg, client, ctx, abortSignal } = params;
@@ -228,15 +254,7 @@ async function handleInboundNapcatMessage(params: {
     lastError: null,
   });
 
-  const route = runtime.channel.routing.resolveAgentRoute({
-    cfg,
-    channel: "napcat",
-    accountId: account.accountId,
-    peer: {
-      kind: message.isGroup ? "group" : "direct",
-      id: message.isGroup ? chatId ?? "unknown" : senderId || "unknown",
-    },
-  });
+  const route = params.route ?? resolveNapcatInboundRoute({ message, account, cfg });
 
   const envelopeOptions = runtime.channel.reply.resolveEnvelopeFormatOptions(cfg);
   const fromLabel = message.isGroup
@@ -389,9 +407,8 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
       onMessage: (msg) => {
         const client = activeClients.get(account.accountId);
         if (!client) return;
-        const queueKey = msg.isGroup
-          ? `${account.accountId}:group:${msg.chatId}`
-          : `${account.accountId}:user:${msg.sender}`;
+        const route = resolveNapcatInboundRoute({ message: msg, account, cfg });
+        const queueKey = route.sessionKey;
         const run = (abortSignal?: AbortSignal) =>
           handleInboundNapcatMessage({
             message: msg,
@@ -399,6 +416,7 @@ async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccou
             cfg,
             client,
             ctx,
+            route,
             abortSignal,
           });
         if (account.interruptOnNewMessage) {

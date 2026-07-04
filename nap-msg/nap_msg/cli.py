@@ -177,18 +177,16 @@ def _build_forward_nodes(parts: List[object]) -> List[ForwardNode]:
     return [ForwardNode(user_id, nickname, [part]) for part in parts]
 
 
-def _build_error_forward_content(parts: List[object], errors: List[dict], raw_segments: List[tuple]) -> List[object]:
-    content = list(parts)
-    content.append(TextMessage(_compose_error_text(errors, raw_segments)))
-    return content or [TextMessage(_compose_error_text(errors, raw_segments))]
-
-
-def _compose_error_text(errors: List[dict], raw_segments: List[tuple]) -> str:
+def _log_build_errors(errors: List[dict], raw_segments: List[tuple]) -> None:
     original = "; ".join(f"{seg}:{val}" for seg, val in raw_segments) if raw_segments else "none"
-    err_lines = "; ".join(
-        f"{err.get('segment')}: {err.get('value')} => {err.get('error')}" for err in errors
-    ) or "unknown error"
-    return f"Message delivery failed. Original: [{original}]. Errors: {err_lines}."
+    logging.error("Message content build failed; original segments: %s", original)
+    for err in errors:
+        logging.error(
+            "Segment build failed: %s: %s => %s",
+            err.get("segment"),
+            err.get("value"),
+            err.get("error"),
+        )
 
 
 def _serialize_parts(parts: List[object]) -> List[dict]:
@@ -229,12 +227,13 @@ def _run_send_group(args: argparse.Namespace) -> int:
     is_forward = args.forward or args.type == "forward"
     client = NapcatRelayClient(url=args.napcat_url, timeout=args.timeout)
 
+    if errors:
+        _log_build_errors(errors, raw_segments)
+        if not parts:
+            return 1
+
     try:
-        if errors:
-            content = _build_error_forward_content(parts, errors, raw_segments)
-            nodes = _build_forward_nodes(content)
-            response = asyncio.run(send_group_forward_message(client, args.group_id, nodes))
-        elif is_forward:
+        if is_forward:
             nodes = _build_forward_nodes(parts)
             response = asyncio.run(send_group_forward_message(client, args.group_id, nodes))
         else:
@@ -257,12 +256,13 @@ def _run_send_private(args: argparse.Namespace) -> int:
     is_forward = args.forward or args.type == "forward"
     client = NapcatRelayClient(url=args.napcat_url, timeout=args.timeout)
 
+    if errors:
+        _log_build_errors(errors, raw_segments)
+        if not parts:
+            return 1
+
     try:
-        if errors:
-            content = _build_error_forward_content(parts, errors, raw_segments)
-            nodes = _build_forward_nodes(content)
-            response = asyncio.run(send_private_forward_message(client, args.user_id, nodes))
-        elif is_forward:
+        if is_forward:
             nodes = _build_forward_nodes(parts)
             response = asyncio.run(send_private_forward_message(client, args.user_id, nodes))
         else:
