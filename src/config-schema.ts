@@ -44,7 +44,6 @@ const accountShape = {
       idleMs: { type: "number" },
     },
   },
-  interruptOnNewMessage: { type: "boolean" },
   textSplit: {
     type: "object",
     additionalProperties: false,
