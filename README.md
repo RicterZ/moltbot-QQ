@@ -159,7 +159,7 @@ Voice messages are transcribed automatically when `asr` is configured. Powered b
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `blockStreaming` | boolean | `false` | Disable streaming replies (send only when complete) |
+| `blockStreaming` | boolean | `false` | Enable block streaming replies. Disabled by default so text+media replies are delivered only after final media normalization. |
 | `blockStreamingCoalesce` | object | `{minChars:80,idleMs:250}` | Coalescing config for streaming chunks |
 | `textSplit` | object | `{enabled:true,minDelayMs:1000,maxDelayMs:3000}` | Split outbound text on blank lines and wait between split messages |
 

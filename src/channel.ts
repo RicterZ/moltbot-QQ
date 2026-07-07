@@ -1,8 +1,6 @@
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
-import { createReplyPrefixContext } from "openclaw/plugin-sdk/channel-runtime";
 import type { ChannelGatewayContext, ChannelStatusIssue } from "openclaw/plugin-sdk/channel-contract";
 import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk/core";
-import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
 
 import { join } from "node:path";
 
@@ -169,6 +167,7 @@ async function handleInboundNapcatMessage(params: {
 
   const ctxPayload = runtime.channel.reply.finalizeInboundContext({
     Body: body,
+    BodyForAgent: bodyContent,
     RawBody: text,
     CommandBody: text,
     From: target.channel === "group" ? `napcat:group:${target.id}` : `napcat:${senderId || target.id}`,
@@ -182,6 +181,9 @@ async function handleInboundNapcatMessage(params: {
     Provider: "napcat",
     Surface: "napcat",
     MessageSid: message.messageId != null ? String(message.messageId) : undefined,
+    MessageSidFull: message.messageId != null ? String(message.messageId) : undefined,
+    ReplyToId: message.messageId != null ? String(message.messageId) : undefined,
+    ReplyToIdFull: message.messageId != null ? String(message.messageId) : undefined,
     MediaUrls: attachments.length > 0 ? attachments : undefined,
     MediaPaths: attachments.length > 0 ? attachments : undefined,
     WasMentioned: true,
@@ -193,14 +195,28 @@ async function handleInboundNapcatMessage(params: {
     MediaType: mediaKind,
   });
 
-  const prefixContext = createReplyPrefixContext({ cfg, agentId: route.agentId });
+  const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
+    agentId: route.agentId,
+  });
 
-  const { dispatcher, replyOptions, markDispatchIdle } =
-    runtime.channel.reply.createReplyDispatcherWithTyping({
-      responsePrefix: prefixContext.responsePrefix,
-      responsePrefixContextProvider: prefixContext.responsePrefixContextProvider,
-      humanDelay: runtime.channel.reply.resolveHumanDelayConfig(cfg, route.agentId),
-      deliver: async (payload: ReplyPayload) => {
+  // Napcat MEDIA: directives are normalized only at final delivery time.
+  // Keep block streaming opt-in so text+media replies are not flushed as text first.
+  const disableBlockStreaming =
+    typeof account.blockStreaming === "boolean" ? !account.blockStreaming : true;
+
+  await runtime.channel.inbound.dispatchReply({
+    cfg,
+    channel: "napcat",
+    accountId: account.accountId,
+    agentId: route.agentId,
+    routeSessionKey: route.sessionKey,
+    storePath,
+    ctxPayload,
+    recordInboundSession: runtime.channel.session.recordInboundSession,
+    dispatchReplyWithBufferedBlockDispatcher:
+      runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
+    delivery: {
+      deliver: async (payload) => {
         const parsedTarget = normalizeNapcatTarget(ctxPayload.To ?? to) ?? target;
         await deliverNapcatReplies({
           replies: [payload],
@@ -220,25 +236,18 @@ async function handleInboundNapcatMessage(params: {
       onError: (err, info) => {
         ctx.log?.error(`napcat ${info.kind} reply failed: ${String(err)}`);
       },
-    });
-
-  // Always allow streaming by default; set channels.napcat.blockStreaming=true to disable.
-  const disableBlockStreaming =
-    typeof account.blockStreaming === "boolean" ? account.blockStreaming : false;
-
-  await runtime.channel.reply.dispatchReplyFromConfig({
-    ctx: ctxPayload,
-    cfg,
-    dispatcher,
-    replyOptions: {
-      ...replyOptions,
-      disableBlockStreaming,
-      onModelSelected: prefixContext.onModelSelected,
     },
+    replyPipeline: {},
+    replyOptions: {
+      disableBlockStreaming,
+    },
+    record: {
+      onRecordError: (err) => {
+        ctx.log?.error(`napcat failed updating session meta: ${String(err)}`);
+      },
+    },
+    messageId: message.messageId != null ? String(message.messageId) : undefined,
   });
-
-  markDispatchIdle();
-  await dispatcher.waitForIdle();
 }
 
 async function startNapcatMonitor(ctx: ChannelGatewayContext<ResolvedNapcatAccount>) {
