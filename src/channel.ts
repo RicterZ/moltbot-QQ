@@ -346,6 +346,11 @@ export const napcatPlugin: ChannelPlugin<ResolvedNapcatAccount> = {
     // Minimal coalescing so interim replies flush quickly.
     blockStreamingCoalesceDefaults: { minChars: 80, idleMs: 250 },
   },
+  threading: {
+    resolveReplyToMode: ({ cfg, accountId }) =>
+      resolveNapcatAccount({ cfg, accountId }).replyToMode,
+    allowExplicitReplyTagsWhenOff: true,
+  },
   reload: { configPrefixes: ["channels.napcat"] },
   configSchema: napcatChannelConfigSchema,
   config: {

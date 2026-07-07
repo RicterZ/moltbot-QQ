@@ -44,6 +44,10 @@ const accountShape = {
       idleMs: { type: "number" },
     },
   },
+  replyToMode: {
+    type: "string",
+    enum: ["off", "first", "all", "batched"],
+  },
   textSplit: {
     type: "object",
     additionalProperties: false,

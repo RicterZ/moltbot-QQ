@@ -19,6 +19,8 @@ export type ResolvedNapcatTextSplitConfig = {
   maxDelayMs: number;
 };
 
+export type NapcatReplyToMode = "off" | "first" | "all" | "batched";
+
 export type NapcatAsrConfig = {
   secretId: string;
   secretKey: string;
@@ -36,6 +38,7 @@ export type NapcatAccountConfig = {
   fromUser?: string | number | (string | number)[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  replyToMode?: NapcatReplyToMode;
   textSplit?: NapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
@@ -56,6 +59,7 @@ export type ResolvedNapcatAccount = {
   fromUser?: string[];
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
+  replyToMode: NapcatReplyToMode;
   textSplit: ResolvedNapcatTextSplitConfig;
   asr?: NapcatAsrConfig;
 };
@@ -139,6 +143,7 @@ export function resolveNapcatAccount(params: {
     fromUser: normalizeIds(merged.fromUser),
     blockStreaming: merged.blockStreaming,
     blockStreamingCoalesce: merged.blockStreamingCoalesce,
+    replyToMode: merged.replyToMode ?? "off",
     textSplit: normalizeTextSplit(merged.textSplit),
     asr: normalizeAsr(merged.asr),
   };
