@@ -182,8 +182,6 @@ async function handleInboundNapcatMessage(params: {
     Surface: "napcat",
     MessageSid: message.messageId != null ? String(message.messageId) : undefined,
     MessageSidFull: message.messageId != null ? String(message.messageId) : undefined,
-    ReplyToId: message.messageId != null ? String(message.messageId) : undefined,
-    ReplyToIdFull: message.messageId != null ? String(message.messageId) : undefined,
     MediaUrls: attachments.length > 0 ? attachments : undefined,
     MediaPaths: attachments.length > 0 ? attachments : undefined,
     WasMentioned: true,
