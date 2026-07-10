@@ -6,6 +6,7 @@ import functools
 import json
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -105,6 +106,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug logging.",
     )
+    parser.add_argument("--background-worker", action="store_true", help=argparse.SUPPRESS)
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -204,7 +206,7 @@ def _video_url_segment(video_url: str, duration: Optional[int] = None) -> Option
     """Download *video_url*, transcode to QQ-compatible MP4, return a VideoMessage."""
     from .video import LIVE_CLIP_SECONDS
     secs = duration or LIVE_CLIP_SECONDS
-    print(f"Downloading and processing video (up to {secs}s), please wait...")
+    logging.info("Downloading and processing video (up to %ss)", secs)
     path = download_and_transcode(video_url, duration=secs)
     if not path:
         return None
@@ -212,9 +214,20 @@ def _video_url_segment(video_url: str, duration: Optional[int] = None) -> Option
 
 
 def _print_response(response: dict) -> None:
+    logging.info("Napcat response: %s", json.dumps(response, ensure_ascii=False))
     sys.stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")))
     sys.stdout.write("\n")
     sys.stdout.flush()
+
+
+def _start_background_worker(argv: list[str]) -> None:
+    subprocess.Popen(
+        [sys.executable, "-m", "nap_msg.cli", "--background-worker", *argv],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def _run_send_group(args: argparse.Namespace) -> int:
@@ -277,9 +290,25 @@ def _run_send_private(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     _load_dotenv_if_present()
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
     _configure_logging(args.verbose)
+
+    if not args.background_worker and any(
+        segment_type in {"video", "video-url"}
+        for segment_type, _ in getattr(args, "segments", [])
+    ):
+        try:
+            _start_background_worker(raw_argv)
+        except OSError as exc:
+            logging.exception("Failed to start background video send: %s", exc)
+            return 1
+        _print_response({
+            "status": "queued",
+            "log": f"Video is being sent in background; see {Path.cwd() / 'nap-msg.log'}",
+        })
+        return 0
 
     if args.command == "send":
         return _run_send_private(args)

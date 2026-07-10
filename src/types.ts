@@ -98,8 +98,8 @@ function normalizeDelayMs(value: unknown, fallback: number): number {
 }
 
 function normalizeTextSplit(textSplit?: NapcatTextSplitConfig): ResolvedNapcatTextSplitConfig {
-  const minDelayMs = normalizeDelayMs(textSplit?.minDelayMs, 1000);
-  const maxDelayMs = normalizeDelayMs(textSplit?.maxDelayMs, 3000);
+  const minDelayMs = normalizeDelayMs(textSplit?.minDelayMs, 2000);
+  const maxDelayMs = normalizeDelayMs(textSplit?.maxDelayMs, 4000);
   return {
     enabled: textSplit?.enabled ?? true,
     minDelayMs: Math.min(minDelayMs, maxDelayMs),
