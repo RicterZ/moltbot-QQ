@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { ChunkMode, ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 
 import type { NapcatWsClient } from "./ws-client.js";
 import type { ResolvedNapcatAccount, ResolvedNapcatTextSplitConfig } from "./types.js";
@@ -23,13 +24,36 @@ export type DeliverNapcatParams = {
 type NapcatSegment =
   | { type: "text"; data: { text: string } }
   | { type: "reply"; data: { id: string } }
-  | { type: "image" | "video" | "file"; data: { file: string } };
+  | { type: "image" | "video"; data: { file: string } }
+  | { type: "file"; data: { file: string; name?: string } };
 
 function inferMediaType(url: string): "image" | "video" | "file" {
   const lower = url.toLowerCase();
   if (lower.match(/\.(png|jpe?g|gif|webp|avif)(\?|$)/)) return "image";
   if (lower.match(/\.(mp4|mov|mkv|webm)(\?|$)/)) return "video";
   return "file";
+}
+
+/**
+ * Derive a display filename for Napcat file segments.
+ * base64:// payloads have no name; without `name` Napcat falls back to a UUID.
+ */
+function inferFileName(url: string): string | undefined {
+  if (url.startsWith("base64://")) return undefined;
+  try {
+    if (
+      url.startsWith("http://") ||
+      url.startsWith("https://") ||
+      url.startsWith("file://")
+    ) {
+      const name = decodeURIComponent(basename(new URL(url).pathname));
+      return name && name !== "/" ? name : undefined;
+    }
+  } catch {
+    // fall through for plain paths
+  }
+  const name = basename(url.split("?")[0] ?? url);
+  return name || undefined;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -225,7 +249,17 @@ export async function deliverNapcatReplies(params: DeliverNapcatParams): Promise
       }
       first = false;
       const mediaType = inferMediaType(url);
-      segments.push({ type: mediaType, data: { file: await toNapcatFileRef(url) } });
+      const file = await toNapcatFileRef(url);
+      if (mediaType === "file") {
+        const name = inferFileName(url);
+        segments.push(
+          name
+            ? { type: "file", data: { file, name } }
+            : { type: "file", data: { file } },
+        );
+      } else {
+        segments.push({ type: mediaType, data: { file } });
+      }
       await sendNapcatMessage({
         client,
         account,

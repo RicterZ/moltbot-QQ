@@ -57,8 +57,15 @@ class ReplyMessage:
 class FileMessage:
     def __init__(self, file_path: str, name: Optional[str] = None):
         self.data = {"file": _as_file_uri(file_path)}
-        if name:
-            self.data["name"] = name
+        # base64:// has no filename; Napcat falls back to a UUID without extension
+        # unless `name` is set. Prefer an explicit name, else derive from local path.
+        resolved_name = name
+        if not resolved_name and not file_path.startswith(
+            ("base64://", "http://", "https://")
+        ):
+            resolved_name = Path(file_path).expanduser().name or None
+        if resolved_name:
+            self.data["name"] = resolved_name
 
     def as_dict(self) -> Dict[str, Any]:
         return {"type": "file", "data": self.data}
